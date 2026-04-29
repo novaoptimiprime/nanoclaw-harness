@@ -1,6 +1,8 @@
 # nanoclaw-mindgraph-harness
 
-A drop-in observability + safety harness for [nanoclaw v2](https://github.com/qwibitai/nanoclaw) — adds JSONL request tracing, a per-agent Vault gate, MindGraph-ready wiki conventions, and an optional viewer integration with [Nova](#wiring-nova-optional).
+A drop-in observability + safety harness **for [nanoclaw v2](https://github.com/qwibitai/nanoclaw) (the 2.0.x line, tested against `v2.0.17`; minimum floor `v2.0.10`)** — adds JSONL request tracing, a per-agent Vault gate, MindGraph-ready wiki conventions, and an optional viewer integration with [Nova](#wiring-nova-optional). Not compatible with nanoclaw 1.x, `nanoclaw-pro`, or other agent runtimes.
+
+> **Looking for the deep walkthrough?** [CAPABILITIES.md](CAPABILITIES.md) is the authoritative document — architecture diagrams, per-capability detail, a Claude-specific integration playbook, server-start guidance, and a step-by-step for creating a new agent. This README covers install only. If you're an LLM reading the repo, start at [CLAUDE.md](CLAUDE.md).
 
 The harness installs as an overlay on top of an unmodified nanoclaw v2 checkout. Five components ship as one `/add-mindgraph-harness` skill:
 
