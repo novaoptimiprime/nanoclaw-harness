@@ -244,7 +244,7 @@ After install, exercise it manually:
 
 ## Capability 3 — Nova MindGraph wiring
 
-**What it gives you:** if the operator runs the optional [Nova MindGraph viewer](https://github.com/qwibitai/nova) (or whatever Nova-shaped viewer they have), the install script appends two scope entries to its `roots.ts` and `trace-sources.ts` so the v2 agents show up in the left panel with both their wiki *and* their JSONL traces.
+**What it gives you:** the [Nova MindGraph viewer](nova/) — vendored in this repo at `nova/` and copied per-project at bootstrap time — renders an interactive graph of every agent's Mind plus a left-panel timeline of traces. The harness install script (`scripts/install-harness.sh` with `--nova=PATH`) and `scripts/new-agent.sh` append scope entries to Nova's `roots.ts` and `trace-sources.ts` so registered agents show up in the left panel with both their wiki *and* their JSONL traces.
 
 **Where it lives in the bundle:**
 
