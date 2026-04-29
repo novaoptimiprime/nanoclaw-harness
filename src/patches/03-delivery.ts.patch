@@ -1,0 +1,50 @@
+diff --git a/src/delivery.ts b/src/delivery.ts
+index 036153a..9c092bd 100644
+--- a/src/delivery.ts
++++ b/src/delivery.ts
+@@ -20,7 +20,7 @@ import {
+   markDeliveryFailed,
+   migrateDeliveredTable,
+ } from './db/session-db.js';
+-import { log } from './log.js';
++import { log, traceIdForSession, entryNodeForAgentFolder } from './log.js';
+ import { normalizeOptions } from './channels/ask-question.js';
+ import { clearOutbox, openInboundDb, openOutboundDb, readOutboxFiles } from './session-manager.js';
+ import { pauseTypingRefreshAfterDelivery, setTypingAdapter } from './modules/typing/index.js';
+@@ -360,12 +360,36 @@ async function deliverMessage(
+     msg.content,
+     files,
+   );
++  const ag = getAgentGroup(session.agent_group_id);
++  // Pair this exit with the most-recent inbound on this session: that's the
++  // invocation we just answered. Falls back silently if the map has no entry
++  // yet (e.g., system-action delivery with no preceding route on this session).
++  const traceId = ag ? traceIdForSession(session.id) : undefined;
++  const exitNode = ag ? entryNodeForAgentFolder(ag.folder) : undefined;
++  let responseLength: number | undefined;
++  try {
++    const parsed = JSON.parse(msg.content) as { text?: string };
++    if (typeof parsed.text === 'string') responseLength = parsed.text.length;
++  } catch {
++    /* not chat-shaped */
++  }
+   log.info('Message delivered', {
+     id: msg.id,
+     channelType: msg.channel_type,
+     platformId: msg.platform_id,
+     platformMsgId,
+     fileCount: files?.length,
++    ...(ag && traceId && exitNode
++      ? {
++          trace: {
++            trace_id: traceId,
++            agent_folder: ag.folder,
++            event: 'exit',
++            node_id: exitNode,
++          },
++          response_length: responseLength,
++        }
++      : {}),
+   });
+ 
+   clearOutbox(session.agent_group_id, session.id, msg.id);

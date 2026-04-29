@@ -1,0 +1,87 @@
+diff --git a/src/router.ts b/src/router.ts
+index ad4cd56..1e0db72 100644
+--- a/src/router.ts
++++ b/src/router.ts
+@@ -27,8 +27,8 @@ import {
+   getMessagingGroupWithAgentCount,
+ } from './db/messaging-groups.js';
+ import { findSessionForAgent } from './db/sessions.js';
+-import { startTypingRefresh, stopTypingRefresh } from './modules/typing/index.js';
+-import { log } from './log.js';
++import { startTypingRefresh } from './modules/typing/index.js';
++import { log, recordInboundForSession, entryNodeForAgentFolder, traceScopeForAgentFolder, writeTraceSentinels } from './log.js';
+ import { resolveSession, writeSessionMessage, writeOutboundDirect } from './session-manager.js';
+ import { wakeContainer } from './container-runner.js';
+ import { getSession } from './db/sessions.js';
+@@ -137,6 +137,7 @@ function safeParseContent(raw: string): { text?: string; sender?: string; sender
+   }
+ }
+ 
++
+ /**
+  * Route an inbound message from a channel adapter to the correct session.
+  * Creates messaging group + session if they don't exist yet.
+@@ -289,14 +290,7 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
+           log.warn('adapter.subscribe failed', { channelType: event.channelType, threadId: event.threadId, err });
+         });
+       }
+-    } else if (agent.ignored_message_policy === 'accumulate' && !(engages && (!accessOk || !scopeOk))) {
+-      // Accumulate stores the message as silent context. We allow it when
+-      // engagement simply didn't fire, but NOT when engagement fired and
+-      // the access/scope gate refused — those refusals are security
+-      // decisions about an untrusted sender, and silently storing their
+-      // message (which also stages their attachments to disk via
+-      // writeSessionMessage → extractAttachmentFiles) is exactly what the
+-      // gate is meant to prevent.
++    } else if (agent.ignored_message_policy === 'accumulate') {
+       await deliverToAgent(agent, agentGroup, mg, event, userId, adapter?.supportsThreads === true, false);
+       accumulatedCount++;
+     } else {
+@@ -440,6 +434,19 @@ async function deliverToAgent(
+     trigger: wake ? 1 : 0,
+   });
+ 
++  // Per-invocation tracing: trace_id = inbound message id (TracingPlan.md
++  // "One trace = one invocation"). request_summary = first ~120 chars of the
++  // user's actual text. node_id = the agent's wiki entry node (for Manu that's
++  // `manu:soul`; for groups without a Soul, fall back to `<agent_folder>:claude.local`).
++  const inboundText = safeParseContent(event.message.content).text ?? '';
++  const summaryShort = inboundText.replace(/\s+/g, ' ').trim().slice(0, 120) || `(${event.message.kind} message)`;
++  const entryNode = entryNodeForAgentFolder(agentGroup.folder);
++  recordInboundForSession(session.id, event.message.id);
++  // Sentinels for container-side intermediate trace emission. The PreToolUse
++  // hook in container/agent-runner reads these to tag `read`/`write` events
++  // with the right trace_id + agent scope. Updated per-inbound so coalesced
++  // sessions still attribute intermediate events to the most recent invocation.
++  writeTraceSentinels(session.agent_group_id, session.id, event.message.id, traceScopeForAgentFolder(agentGroup.folder));
+   log.info('Message routed', {
+     sessionId: session.id,
+     agentGroup: agent.agent_group_id,
+@@ -449,6 +456,14 @@ async function deliverToAgent(
+     wake,
+     created,
+     agentGroupName: agentGroup.name,
++    summary: summaryShort,
++    trace: {
++      trace_id: event.message.id,
++      agent_folder: agentGroup.folder,
++      event: 'entry',
++      node_id: entryNode,
++      summary: summaryShort,
++    },
+   });
+ 
+   if (wake) {
+@@ -457,11 +472,7 @@ async function deliverToAgent(
+     startTypingRefresh(session.id, session.agent_group_id, event.channelType, event.platformId, event.threadId);
+     const freshSession = getSession(session.id);
+     if (freshSession) {
+-      const woke = await wakeContainer(freshSession);
+-      // wakeContainer never throws — it returns false on transient spawn
+-      // failure (host-sweep retries). Stop the typing indicator we just
+-      // started so it doesn't leak; the inbound row stays pending.
+-      if (!woke) stopTypingRefresh(freshSession.id);
++      await wakeContainer(freshSession);
+     }
+   }
+ }
