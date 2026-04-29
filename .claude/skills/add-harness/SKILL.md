@@ -1,5 +1,5 @@
 ---
-name: add-mindgraph-harness
+name: add-harness
 description: Install the MindGraph observability + Vault safety harness onto a nanoclaw v2 checkout. Adds JSONL request tracing, a per-agent vault PreToolUse gate, optional Nova viewer wiring, and a MasterMind starter pack with wiki/tracing/vault conventions.
 ---
 
@@ -23,7 +23,7 @@ Otherwise continue. Every step is safe to re-run.
 From the root of this overlay repo:
 
 ```bash
-./setup/install-mindgraph-harness.sh \
+./setup/install-harness.sh \
   --nanoclaw=/path/to/your/nanoclaw-v2 \
   --mastermind=/path/to/your/MasterMind \
   --nova=/path/to/your/Nova       # optional

@@ -30,7 +30,7 @@ Keep entries focused. Significant work → its own entry. Trivial work → a one
 
 ### YYYY-MM-DD — Project bootstrapped from agent-fleet harness
 
-**What changed:** Ran `bootstrap-project.sh` from the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness). New project skeleton in place: `_ProjectWiki/`, `MasterMind/`, `nanoclaw-v2/` (cloned from upstream + harness patches applied), `nova/` (referenced from harness vendored copy).
+**What changed:** Ran `bootstrap-project.sh` from the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-harness). New project skeleton in place: `_ProjectWiki/`, `MasterMind/`, `nanoclaw-v2/` (cloned from upstream + harness patches applied), `nova/` (referenced from harness vendored copy).
 
 **Why:** Starting [project name] on the harness gives us tracing + Vault + Nova viewer + MindGraph conventions for free.
 

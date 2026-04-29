@@ -14,7 +14,7 @@ How the project is laid out at runtime — the systems, where they run, how they
 
 _What's running where. Example sections to fill in:_
 
-- **Agent runtime:** nanoclaw v2 (from [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness)). One install at `<path>/nanoclaw-v2/`. Service managed by launchd/systemd.
+- **Agent runtime:** nanoclaw v2 (from [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-harness)). One install at `<path>/nanoclaw-v2/`. Service managed by launchd/systemd.
 - **Per-agent containers:** Docker-per-message; coalesced; spawned on inbound, idle out after N seconds.
 - **Admin console:** Nova viewer at `<path>/nova/`. Started with `pnpm run dev`, listens on `:3000`.
 

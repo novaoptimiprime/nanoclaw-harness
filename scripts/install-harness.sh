@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #
-# install-mindgraph-harness — install the MindGraph observability + Vault
-# safety harness onto a clean nanoclaw v2 checkout. Idempotent: every step
-# checks state and skips if already done.
+# install-harness — install the nanoclaw harness (JSONL tracing + Vault gate
+# + MasterMind starter pack + optional Nova wiring) onto a clean nanoclaw v2
+# checkout. Idempotent: every step checks state and skips if already done.
 #
 # Usage:
-#   ./install-mindgraph-harness.sh \
+#   ./install-harness.sh \
 #     --nanoclaw=/path/to/nanoclaw-v2 \
 #     --mastermind=/path/to/MasterMind \
 #     --nova=/path/to/Nova            # optional
@@ -80,7 +80,7 @@ if [ -n "$NOVA_PATH" ]; then
   }
 fi
 
-echo "=== install-mindgraph-harness ==="
+echo "=== install-harness ==="
 echo "  nanoclaw   : $NANOCLAW_PATH"
 echo "  mastermind : $MASTERMIND_PATH"
 echo "  nova       : ${NOVA_PATH:-<skipped>}"

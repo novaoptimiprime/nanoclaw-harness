@@ -3,7 +3,7 @@
 # install-nanoclaw — clone upstream qwibitai/nanoclaw v2 to a target path.
 #
 # This is step 1 of bootstrapping a new agent-fleet project. It only clones
-# nanoclaw; it does NOT apply the harness patches. Run install-mindgraph-harness.sh
+# nanoclaw; it does NOT apply the harness patches. Run install-harness.sh
 # afterward (or use bootstrap-project.sh which orchestrates both).
 #
 # Usage:
@@ -82,4 +82,4 @@ echo "STATUS: installed"
 echo "HEAD: $(cd "$TARGET" && git rev-parse --short HEAD) ($(cd "$TARGET" && git log -1 --pretty=%s | head -c 60))"
 echo
 echo "Next step: apply the harness patches."
-echo "  ./scripts/install-mindgraph-harness.sh --nanoclaw=$TARGET ..."
+echo "  ./scripts/install-harness.sh --nanoclaw=$TARGET ..."

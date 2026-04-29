@@ -26,7 +26,7 @@ flowchart TB
 
     subgraph baseline["AGENT-FLEET BASELINE (this repo, you clone once)"]
         TPL["templates/<br/>_ProjectWiki, MasterMind, agents/_template, CLAUDE.md"]
-        SCRIPTS["scripts/<br/>bootstrap-project, install-nanoclaw,<br/>install-mindgraph-harness, new-agent"]
+        SCRIPTS["scripts/<br/>bootstrap-project, install-nanoclaw,<br/>install-harness, new-agent"]
         PATCHES["src/patches/<br/>4 git apply patches:<br/>tracing + Vault gate"]
         NOVA["nova/<br/>vendored MindGraph viewer source"]
         DOCS["docs/<br/>CLAUDE.md, CAPABILITIES, ARCHITECTURE,<br/>README, PHASE-A-CATALOG"]
@@ -186,7 +186,7 @@ flowchart LR
         B1[Lay down templates:<br/>_ProjectWiki/, MasterMind/, CLAUDE.md] -->
         B2[Substitute placeholders<br/>: Project Name, master, etc.] -->
         B3[Clone nanoclaw v2<br/>via install-nanoclaw.sh] -->
-        B4[Apply harness patches<br/>via install-mindgraph-harness.sh] -->
+        B4[Apply harness patches<br/>via install-harness.sh] -->
         B5[Copy or symlink<br/>nova/] -->
         B6[Register project paths<br/>in nova/roots.ts] -->
         B7[git init + first commit]

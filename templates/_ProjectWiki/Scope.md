@@ -30,4 +30,4 @@ _Add one row per agent. Update status as agents come online (planned → install
 
 ## Boundary with the harness
 
-This project consumes the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness) as infrastructure. Harness changes (tracing schema, Vault rules, Nova wiring, MasterMind conventions) live in the harness repo, not here. Project-specific decisions live in [Decisions.md](Decisions.md).
+This project consumes the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-harness) as infrastructure. Harness changes (tracing schema, Vault rules, Nova wiring, MasterMind conventions) live in the harness repo, not here. Project-specific decisions live in [Decisions.md](Decisions.md).

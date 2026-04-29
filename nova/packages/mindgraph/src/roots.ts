@@ -2,7 +2,7 @@ import type { WikiRoot } from "@nova/mindgraph-source-fs";
 
 /**
  * Default wiki roots for the viewer. Empty in the baseline — the
- * agent-fleet harness install script (`scripts/install-mindgraph-harness.sh`)
+ * agent-fleet harness install script (`scripts/install-harness.sh`)
  * appends one entry per registered agent before the closing `];`. Add entries
  * by hand or re-run the install script with `--nova=$PWD` from a project root.
  *

@@ -13,7 +13,7 @@ That file is the source of truth for this project: scope, ground rules, architec
 
 ## What this project is built on
 
-This project sits on the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness) — a baseline infrastructure layer providing nanoclaw v2 + JSONL request tracing + per-agent Vault gate + Nova MindGraph viewer + MasterMind conventions + Karpathy wiki shape.
+This project sits on the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-harness) — a baseline infrastructure layer providing nanoclaw v2 + JSONL request tracing + per-agent Vault gate + Nova MindGraph viewer + MasterMind conventions + Karpathy wiki shape.
 
 The harness was bootstrapped into this project via `scripts/bootstrap-project.sh`. To upgrade the harness later: `<harness-repo>/scripts/upgrade-project.sh --target=$PWD`.
 

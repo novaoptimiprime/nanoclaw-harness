@@ -34,7 +34,7 @@ _Add one page per agent as the fleet grows. Use [Agents/_template.md](Agents/_te
 
 ## Foundation
 
-This project is built on the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness). The harness provides:
+This project is built on the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-harness). The harness provides:
 
 - **nanoclaw v2** — Docker-per-message agent runtime (upstream, with harness patches applied).
 - **Tracing** — JSONL trace per inbound message in `<agent>/Traces/<YYYY-MM-DD>/<id>.jsonl`.

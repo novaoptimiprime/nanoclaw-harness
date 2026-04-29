@@ -49,8 +49,8 @@ Plus, in the running fleet:
 ## Bootstrap a new project
 
 ```bash
-git clone https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness.git
-cd nanoclaw-mindgraph-harness
+git clone https://github.com/novaoptimiprime/nanoclaw-harness.git
+cd nanoclaw-harness
 
 ./scripts/bootstrap-project.sh \
   --target=/path/to/your-new-project \
@@ -84,7 +84,7 @@ Stamps the agent template, substitutes placeholders, registers the agent in Nova
 If you already have a nanoclaw v2 install and want only the harness (not a full project bootstrap):
 
 ```bash
-./scripts/install-mindgraph-harness.sh \
+./scripts/install-harness.sh \
   --nanoclaw=/path/to/your/nanoclaw-v2 \
   --mastermind=/path/to/your/MasterMind \
   --nova=/path/to/your/Nova        # optional

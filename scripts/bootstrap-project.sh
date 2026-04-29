@@ -24,7 +24,7 @@
 #   2. Lays down project skeleton: _ProjectWiki/, MasterMind/, CLAUDE.md.
 #   3. Substitutes placeholders ([Project Name], <master>, etc.) in templates.
 #   4. Clones nanoclaw v2 to <target>/nanoclaw-v2/.
-#   5. Applies the harness patches via install-mindgraph-harness.sh.
+#   5. Applies the harness patches via install-harness.sh.
 #   6. Wires Nova: symlinks <target>/nova/ → baseline's nova/, OR copies it.
 #   7. Initializes git in <target>/ (unless --no-git).
 #   8. Prints next-step instructions.
@@ -152,12 +152,12 @@ NANOCLAW_FLAGS=(--target="$NANOCLAW_TARGET")
 
 echo "STEP 4: apply harness patches"
 
-"$SCRIPTS_DIR/install-mindgraph-harness.sh" \
+"$SCRIPTS_DIR/install-harness.sh" \
   --nanoclaw="$NANOCLAW_TARGET" \
   --mastermind="$TARGET/MasterMind" \
-  --skip-build || { echo "ERROR: install-mindgraph-harness.sh failed" >&2; exit 3; }
+  --skip-build || { echo "ERROR: install-harness.sh failed" >&2; exit 3; }
 
-# Build runs inside install-mindgraph-harness.sh by default. We deferred it
+# Build runs inside install-harness.sh by default. We deferred it
 # (--skip-build) so bootstrap is fast; build will run in the project's normal
 # operation. Operator runs `cd nanoclaw-v2 && pnpm install && pnpm run build`
 # manually as Step N+1 (printed at the end).

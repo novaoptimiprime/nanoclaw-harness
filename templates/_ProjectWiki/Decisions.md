@@ -27,7 +27,7 @@ Keep entries short and self-contained. If a decision references files or externa
 
 ## Example: Project bootstrapped from agent-fleet harness
 **Date:** _YYYY-MM-DD (replace with actual date when bootstrapping)_
-**Decision:** This project uses the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness) as its infrastructure baseline (nanoclaw v2 + tracing + Vault + Nova + MasterMind + wiki conventions).
+**Decision:** This project uses the [agent-fleet harness](https://github.com/novaoptimiprime/nanoclaw-harness) as its infrastructure baseline (nanoclaw v2 + tracing + Vault + Nova + MasterMind + wiki conventions).
 **Alternatives considered:** Build runtime + viewer + conventions from scratch; use raw nanoclaw without harness; use a different agent runtime.
 **Why:** The harness aggregates a tested stack. Bootstrapping from it means inheriting tracing, Vault enforcement, Nova viewer wiring, and MindGraph-ready wiki conventions for free, rather than re-deriving them per project.
 **Trade accepted:** Coupling to the harness's choices (nanoclaw v2 as runtime, Karpathy wiki shape, Nova as viewer). Reasonable for now; reconsider if a project genuinely needs a different shape.

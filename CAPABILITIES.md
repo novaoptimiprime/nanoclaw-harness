@@ -248,7 +248,7 @@ After install, exercise it manually:
 
 **Where it lives in the bundle:**
 
-- `scripts/install-mindgraph-harness.sh` — the awk-insert logic (lines around `insert_nova_entries`). No bundled `.ts` files; entries are generated inline because they need absolute paths to the operator's nanoclaw groups.
+- `scripts/install-harness.sh` — the awk-insert logic (lines around `insert_nova_entries`). No bundled `.ts` files; entries are generated inline because they need absolute paths to the operator's nanoclaw groups.
 
 **What it does** when the operator passes `--nova=PATH`:
 
@@ -291,7 +291,7 @@ After install, exercise it manually:
 - `templates/MasterMind/README.md` — the master ground-rules doc. Sections: Invariants, Protocols, MindGraph Conventions, Fleet Topology, Request Tracing, Confidential Files (pointer to Vault.md).
 - `templates/MasterMind/Vault.md` — the five Vault rules + cross-agent request workflow + violation consequence.
 
-**Install behavior:** `scripts/install-mindgraph-harness.sh` copies these into the operator's `--mastermind=PATH` directory **only if missing**. Existing files are never overwritten. This means:
+**Install behavior:** `scripts/install-harness.sh` copies these into the operator's `--mastermind=PATH` directory **only if missing**. Existing files are never overwritten. This means:
 
 - A fresh install bootstraps the operator's MasterMind from the bundle.
 - A re-install after the operator has customized `MasterMind/` is a no-op for these two files (operator's edits stay).
@@ -380,7 +380,7 @@ Anything beyond these four is at the agent's discretion.
 ## File map
 
 ```
-nanoclaw-mindgraph-harness/
+nanoclaw-harness/
 ├── CLAUDE.md                                  Bootstrap — read first if you're an LLM.
 ├── CAPABILITIES.md                            This file. The full walkthrough.
 ├── README.md                                  Install + prereqs + caveats. Operator entry point.
@@ -389,11 +389,11 @@ nanoclaw-mindgraph-harness/
 ├── LICENSE                                    MIT.
 ├── .claude/
 │   └── skills/
-│       └── add-mindgraph-harness/
+│       └── add-harness/
 │           └── SKILL.md                       Slash-command operator doc. Used by Claude Code
-│                                              when /add-mindgraph-harness is invoked.
+│                                              when /add-harness is invoked.
 ├── setup/
-│   └── install-mindgraph-harness.sh           Idempotent installer. Runs git apply, copies
+│   └── install-harness.sh           Idempotent installer. Runs git apply, copies
 │                                              MasterMind, awk-inserts Nova entries, builds.
 └── src/
     ├── patches/                               Four git apply patches against nanoclaw v2.
@@ -412,7 +412,7 @@ nanoclaw-mindgraph-harness/
 - **Largest by line count:** `PHASE-A-CATALOG.md` (~420 lines), `CAPABILITIES.md` (this file), `templates/MasterMind/README.md` (~310 lines).
 - **Most important to read for understanding:** `CAPABILITIES.md`, then `templates/MasterMind/README.md` (the runtime conventions).
 - **Most important to read for debugging:** `PHASE-A-CATALOG.md` plus the four `.patch` files in `src/patches/`.
-- **Most important for installing:** `README.md` + `scripts/install-mindgraph-harness.sh`.
+- **Most important for installing:** `README.md` + `scripts/install-harness.sh`.
 
 ---
 
@@ -423,7 +423,7 @@ A typical lifecycle:
 **1. Install.** Operator clones this repo, runs:
 
 ```bash
-./scripts/install-mindgraph-harness.sh \
+./scripts/install-harness.sh \
   --nanoclaw=/path/to/nanoclaw-v2 \
   --mastermind=/path/to/MasterMind \
   --nova=/path/to/Nova           # optional
@@ -473,7 +473,7 @@ The operator already has a working **nanoclaw v2** install (cloned from `qwibita
 
 ```bash
 # From the overlay repo root:
-./scripts/install-mindgraph-harness.sh \
+./scripts/install-harness.sh \
   --nanoclaw=/path/to/nanoclaw-v2 \
   --mastermind=/path/to/MasterMind \
   --nova=/path/to/Nova       # omit if no Nova
