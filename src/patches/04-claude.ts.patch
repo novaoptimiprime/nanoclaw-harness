@@ -1,5 +1,5 @@
 diff --git a/container/agent-runner/src/providers/claude.ts b/container/agent-runner/src/providers/claude.ts
-index c9478b8..e10f6b9 100644
+index c9478b8..3530544 100644
 --- a/container/agent-runner/src/providers/claude.ts
 +++ b/container/agent-runner/src/providers/claude.ts
 @@ -11,6 +11,167 @@ function log(msg: string): void {
@@ -93,7 +93,7 @@ index c9478b8..e10f6b9 100644
 +// of the group folder) is treated as a Mind page. The node_id is derived as
 +// `<agent>:<basename-lowercased-no-ext>`. The `<agent>` scope is read from
 +// /workspace/.current-agent (host-written sibling sentinel) so this code stays
-+// folder-agnostic — works for manu, future jarvis-v2, etc.
++// folder-agnostic — works for any agent group folder.
 +
 +const TRACE_ID_FILE = '/workspace/.current-trace-id';
 +const TRACE_AGENT_FILE = '/workspace/.current-agent';
@@ -147,7 +147,7 @@ index c9478b8..e10f6b9 100644
 +/**
 + * Vault decisions are also trace events: rule-1 BLOCK and rule-5 AUTO-TRACE
 + * both go into the JSONL so Nova surfaces *why* a vault path was touched
-+ * (or refused) alongside the agent's reasoning steps. Mirrors v1 jasmine's
++ * (or refused) alongside the agent's reasoning steps. Uses the standard
 + * `vault_access` event shape, with `metadata.reason` carrying the gate's
 + * own explanation string.
 + */

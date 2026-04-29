@@ -1,0 +1,27 @@
+{
+  "name": "@nova/mindgraph",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Standalone viewer app for MindGraph. Points at one or more wiki roots and renders the graph at localhost:3000.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova/mindgraph-source-fs": "workspace:*",
+    "@nova/mindgraph-trace": "workspace:*",
+    "@nova/mindgraph-view": "workspace:*",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    },
+    "types": [
+      "node"
+    ],
+    "incremental": true,
+    "noEmit": true,
+    "allowJs": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

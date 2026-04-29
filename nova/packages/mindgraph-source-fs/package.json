@@ -1,0 +1,23 @@
+{
+  "name": "@nova/mindgraph-source-fs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Filesystem adapter for MindGraph. Scans markdown folders and produces {nodes, edges} for the view.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nova/mindgraph-view": "workspace:*",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.6.3"
+  }
+}

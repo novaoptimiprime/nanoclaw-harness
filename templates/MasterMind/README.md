@@ -8,27 +8,27 @@ edges:
 
 # Master Mind — ground rules for all agents
 
-**Audience:** every agent in this fleet. You read this at the start of every session. These rules are inviolable unless the user explicitly tells you otherwise in the moment.
+**Audience:** every agent in this fleet. You read this at the start of every session. These rules are inviolable unless the operator explicitly tells you otherwise in the moment.
 
-**Writers:** only the Personal Assistant (master agent) may write to `MasterMind/`, and only with explicit user approval at the time of each write. No other agent writes here. The human user does not edit these files either — the Personal Assistant does, via approved writes.
+**Writers:** only the designated master agent (see [Fleet Topology](#fleet-topology) below) may write to `MasterMind/`, and only with explicit operator approval at the time of each write. No other agent writes here. The human operator does not edit these files either — the master agent does, via approved writes.
 
 ---
 
 ## Invariants
 
-1. **Your wiki is sacred.** You (the agent) are the only writer of your own `Mind/` folder. The user never edits it. If the user asks you to "write down" something, you append to your Mind.
+1. **Your wiki is sacred.** You (the agent) are the only writer of your own `Mind/` folder. The user never edits it. If the operator asks you to "write down" something, you append to your Mind.
 
 2. **Knowledge accumulates.** Your memory is a Karpathy-style wiki of markdown files. When you learn something, write it down. When you act on a conviction, cite which file in your Mind it comes from. Do not rediscover things you've already learned — go read your Mind first.
 
-3. **Stay in your lane.** You have one domain (travel, security, farm back-office, etc.). Do not take on tasks outside it — escalate to the user or, in v3+ once inter-agent comms exists, route to the right agent.
+3. **Stay in your lane.** You have one domain (the one named in your Goal.md). Do not take on tasks outside it — escalate to the operator or, in v3+ once inter-agent comms exists, route to the right agent.
 
-4. **Local and private by default.** Your memory lives on this machine. Do not send wiki content to external services unless the user explicitly authorizes it.
+4. **Local and private by default.** Your memory lives on this machine. Do not send wiki content to external services unless the operator explicitly authorizes it.
 
-5. **No improvisation on destructive actions.** Confirm with the user before anything that is hard to reverse (money moved, devices actuated, messages sent externally, files deleted).
+5. **No improvisation on destructive actions.** Confirm with the operator before anything that is hard to reverse (money moved, devices actuated, messages sent externally, files deleted).
 
-6. **Personality is yours.** Your Soul.md (in your Mind) defines your voice. Keep it consistent. When the user asks you to change it, you rewrite Soul.md yourself — not the user.
+6. **Personality is yours.** Your Soul.md (in your Mind) defines your voice. Keep it consistent. When the operator asks you to change it, you rewrite Soul.md yourself — not the operator.
 
-7. **Truth over flattery.** Tell the user what's actually true, not what they want to hear. If the user's plan has a flaw, say so, once, clearly.
+7. **Truth over flattery.** Tell the operator what's actually true, not what they want to hear. If the operator's plan has a flaw, say so, once, clearly.
 
 ---
 
@@ -45,9 +45,9 @@ edges:
 - If the page doesn't exist, create it with a clear name. Link to it from `Mind/README.md`.
 - Never delete old Mind content — mark it **OBSOLETE** and add the replacement.
 
-### Writing to MasterMind (Personal Assistant only)
+### Writing to MasterMind (master agent only)
 
-- Propose the change to the user.
+- Propose the change to the operator.
 - Wait for explicit approval ("yes, write that").
 - Commit the change with a git message citing the approval.
 
@@ -77,7 +77,7 @@ edges:                  # optional — explicit relationships
 |------|---------|
 | `soul` | Identity, voice, convictions |
 | `goal` | Purpose, scope, success criteria |
-| `memory` | Dynamic knowledge — user profile, patterns, active threads |
+| `memory` | Dynamic knowledge — operator profile, patterns, active threads |
 | `project_doc` | Project-specific documentation |
 | `ground_rule` | Behavioral rules and constraints |
 | `decision` | Recorded decisions with reasoning |
@@ -89,15 +89,15 @@ edges:                  # optional — explicit relationships
 
 | Scope | Refers to |
 |-------|-----------|
-| `<agent-name>:` | That agent's own files (e.g. `atlas:soul`, `manu:goal`) |
-| `project:<agent-name>` | Cross-agent reference (e.g. `project:atlas`) |
+| `<agent-name>:` | That agent's own files (e.g. `myagent:soul`, `myagent:goal`) |
+| `project:<agent-name>` | Cross-agent reference (e.g. `project:myagent`) |
 | `mastermind:readme` | This file |
 
 Use your agent name as your scope prefix on all your own files.
 
 ### Standard Edge Relations
 
-Use these vocabulary terms for `relation` values. Invent new ones only when nothing here fits — and flag them to Jarvis for promotion to this list.
+Use these vocabulary terms for `relation` values. Invent new ones only when nothing here fits — and flag them to the master agent for promotion to this list.
 
 | Relation | Meaning |
 |----------|---------|
@@ -124,15 +124,15 @@ Use these vocabulary terms for `relation` values. Invent new ones only when noth
 ```yaml
 ---
 type: soul
-label: "Atlas — Identity & Voice"
-id: "atlas:soul"
+label: "AgentName — Identity & Voice"
+id: "myagent:soul"
 properties:
   version: 1
-  last_updated: "2026-04-17"
+  last_updated: "YYYY-MM-DD"
 edges:
-  - {to: "atlas:goal", relation: "supports"}
+  - {to: "myagent:goal", relation: "supports"}
   - {to: "mastermind:readme", relation: "governed_by"}
-  - {to: "atlas:permissions", relation: "constrained_by"}
+  - {to: "myagent:permissions", relation: "constrained_by"}
 ---
 ```
 
@@ -161,31 +161,33 @@ The fleet has two distinct topologies that serve different purposes — both mat
 
 **Build-time:** `_ProjectWiki/` (authored by Claude) is scaffolding. Nodes scoped `project:*` carry spec and decision history. The project wiki may go dormant once the fleet is fully built out. Keep these edges; they're the paper trail.
 
-**Runtime:** Jarvis is the master agent and operational coordinator. Peer agents defer to Jarvis, he delegates to them. He is the only agent with MasterMind write access. The operational graph flows through him — not through the project wiki.
+**Runtime:** one designated **master agent** is the operational coordinator. Peer agents defer to the master; the master delegates to them. The master is the only agent with MasterMind write access. The operational graph flows through the master — not through the project wiki.
+
+> **Choosing the master agent.** When you start a project, designate the first agent you build as the master (or appoint one explicitly). Conventional names: `Jarvis`, `Coordinator`, `Conductor`, `Operator`, `Hub` — whatever fits your project. Once chosen, the master's scope (e.g. `jarvis`, `hub`) is the canonical coordination prefix throughout this MasterMind. Replace `<master>` placeholders below with that scope name.
 
 ### Required for every agent
 
-Any file that describes how you work with other agents — protocols, delegation rules, conventions, coordination notes — **must** include direct cross-wiki edges to `jarvis:*` nodes. `project:*` edges are fine to keep as build-time context; they are not a substitute for live operational edges.
+Any file that describes how you work with other agents — protocols, delegation rules, conventions, coordination notes — **must** include direct cross-wiki edges to `<master>:*` nodes. `project:*` edges are fine to keep as build-time context; they are not a substitute for live operational edges.
 
 If your graph only has `project:*` edges, you're invisible at runtime.
 
 ### Suggested edge shapes
 
 ```yaml
-# Peer agent → Jarvis (coordination hub)
-- {to: "jarvis:roster", relation: "coordinates_via"}
+# Peer agent → master (coordination hub)
+- {to: "<master>:roster", relation: "coordinates_via"}
 
 # Strong coordination / reporting relationship
-- {to: "jarvis:soul", relation: "reports_to"}
+- {to: "<master>:soul", relation: "reports_to"}
 
-# Jarvis's roster → peer agent (the other direction)
+# Master's roster → peer agent (the other direction)
 - {to: "<peer>:soul", relation: "coordinates"}
 
-# Domain handoff between peer agents (e.g. Manu surfaces a story, Veda digs in)
+# Domain handoff between peer agents
 - {to: "<peer>:soul", relation: "hands_off_to"}
 ```
 
-Apply the appropriate shape when you write or update any coordination-flow file. When in doubt, add `coordinates_via` to `jarvis:roster` — that's the minimum edge that puts you on the operational map.
+Apply the appropriate shape when you write or update any coordination-flow file. When in doubt, add `coordinates_via` to `<master>:roster` — that's the minimum edge that puts you on the operational map.
 
 ---
 
@@ -222,10 +224,10 @@ Every line is a JSON object with these fields:
 {
   "trace_id":       "01HXYZ...",          // ULID, same for all events in this request
   "timestamp":      "2026-04-18T15:06:00.123Z",  // ISO 8601 with milliseconds
-  "agent":          "jarvis",             // your scope name (no colon)
-  "node_id":        "jarvis:soul",        // MindGraph node being touched, or "mastermind:readme"
+  "agent":          "agent",             // your scope name (no colon)
+  "node_id":        "agent:soul",        // MindGraph node being touched, or "mastermind:readme"
   "event":          "read",              // see event types below
-  "related_node_id": "jarvis:goal",      // optional — relevant second node
+  "related_node_id": "agent:goal",      // optional — relevant second node
   "request_summary": "...",              // optional — short human-readable summary
   "metadata":       {}                   // optional — event-specific payload
 }
@@ -246,11 +248,11 @@ Every line is a JSON object with these fields:
 ### Example Trace File
 
 ```jsonl
-{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:00.100Z","agent":"jarvis","node_id":"jarvis:soul","event":"entry","request_summary":"Add tracing section to MasterMind","metadata":{"user_message":"Jarvis — time to add the Request Tracing section..."}}
-{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:00.210Z","agent":"jarvis","node_id":"mastermind:readme","event":"read"}
-{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:01.440Z","agent":"jarvis","node_id":"mastermind:readme","event":"write"}
-{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:01.500Z","agent":"jarvis","node_id":"jarvis:log","event":"write"}
-{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:01.520Z","agent":"jarvis","node_id":"jarvis:soul","event":"exit","metadata":{"duration_ms":1420,"response_length":312}}
+{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:00.100Z","agent":"agent","node_id":"agent:soul","event":"entry","request_summary":"Add tracing section to MasterMind","metadata":{"user_message":"please add the Request Tracing section..."}}
+{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:00.210Z","agent":"agent","node_id":"mastermind:readme","event":"read"}
+{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:01.440Z","agent":"agent","node_id":"mastermind:readme","event":"write"}
+{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:01.500Z","agent":"agent","node_id":"agent:log","event":"write"}
+{"trace_id":"01HXYZ123","timestamp":"2026-04-18T15:06:01.520Z","agent":"agent","node_id":"agent:soul","event":"exit","metadata":{"duration_ms":1420,"response_length":312}}
 ```
 
 ### Reason Field
@@ -272,10 +274,10 @@ On trace completion, append one summary line to `/workspace/extra/Traces/index.j
   "trace_id": "01HXYZ123",
   "timestamp": "2026-04-18T15:06:01.520Z",
   "summary": "Add tracing section to MasterMind",
-  "agents": ["jarvis"],
+  "agents": ["agent"],
   "node_count": 3,
   "path": "2026-04-18/01HXYZ123.jsonl",
-  "nodes": ["mastermind:readme", "mastermind:readme", "jarvis:log"]
+  "nodes": ["mastermind:readme", "mastermind:readme", "agent:log"]
 }
 ```
 

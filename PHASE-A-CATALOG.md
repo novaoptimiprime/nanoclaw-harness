@@ -1,5 +1,7 @@
 # Phase A: MindGraph Harness Bundle — File-by-File Change Catalog
 
+> **Historical archaeology document.** This catalog was produced during the initial Phase A extraction of the harness from a development tree (April 2026). It documents file-by-file what was originally extracted into the bundle. The current shipped baseline has since been further generalized — agent-name references and per-folder scope mappings shown in this catalog as examples (e.g. `myagent`, sample agent folder names) reflect the original extraction context, not the current shipped behavior. For the current shape of the baseline, read [CAPABILITIES.md](CAPABILITIES.md) and [ARCHITECTURE.md](ARCHITECTURE.md) instead. Keep this file for provenance and patch-level debugging.
+
 ## Executive Summary
 
 **Total scope:** 10 files across 3 repositories; ~374 net lines added (~22 removed).
@@ -21,7 +23,7 @@
 
 ## Open Questions
 
-1. **Nova upstream baseline:** Nova repo has no git remote configured. All changed files (packages/mindgraph/* and packages/mindgraph-trace/*) are Raju's original work with no upstream to diff against. **Question for Raju:** Should friends clone from your Nova repo directly, or should the bundle patch against a clean scaffolding? This changes the dependency story in Phase B.
+1. **Nova upstream baseline:** Nova repo has no git remote configured. All changed files (packages/mindgraph/* and packages/mindgraph-trace/*) are the operator's original work with no upstream to diff against. **Question for the operator:** Should friends clone from your Nova repo directly, or should the bundle patch against a clean scaffolding? This changes the dependency story in Phase B.
 
 2. **Discord feature scope:** `src/channels/discord.ts` (new file) + `src/channels/index.ts` (registration line) + `package.json` (adds `@chat-adapter/discord@4.26.0`) and ~40 lines in pnpm-lock.yaml are **not harness-related** — they're a separate Discord channel adapter feature. Should these be excluded from the bundle, or bundled as a prerequisite install? Recommend excluding; friends can backport Discord separately if needed.
 
@@ -264,7 +266,7 @@ These changes enable Nova's trace viewer to group related traces (conversation r
   3. Files never leave Vault folder (rule 3 → gate + host security).
   4. Files never to other LLMs (rule 4 → gate + host credentials).
   5. Vault read auto-forces tracing (rule 5 → container/.../claude.ts `markTraceForced()` + gate behavior).
-- **Cross-Agent Vault Requests (lines 45–51):** Workflow (ask Raju directly; no agent-to-agent file passing).
+- **Cross-Agent Vault Requests (lines 45–51):** Workflow (ask the operator directly; no agent-to-agent file passing).
 - **Violation Consequence (lines 53–55):** Deprovisioning on breach.
 
 **Bundle integration:**
@@ -381,7 +383,7 @@ These changes enable Nova's trace viewer to group related traces (conversation r
 **If a friend's nanoclaw-v2 has already been customized:**
 - Check whether `src/log.ts` already contains trace emission logic (different shape from this bundle).
 - Check whether `container/.../claude.ts` already has vault-gate or trace-emit code (would conflict).
-- If conflicts exist, recommend a manual merge review or contact Raju to align implementations.
+- If conflicts exist, recommend a manual merge review or contact the operator to align implementations.
 
 ### Testing Checklist (Phase B → Phase C)
 
@@ -400,7 +402,7 @@ These changes enable Nova's trace viewer to group related traces (conversation r
 
 2. **pnpm-lock.yaml:** Do NOT include the full lock file in the bundle (too verbose). Phase B should instruct friends to `pnpm install @chat-adapter/discord@4.26.0` separately if they want Discord, or ignore it if harness-only.
 
-3. **Nova mirror dependency:** Since Nova has no upstream, friends must clone from Raju's fork. The bundle cannot patch a "clean" mindgraph package; it can only patch an existing Nova install. **Clarify with Raju** whether the bundle should assume Nova is already present or whether Phase B should scaffold a minimal Nova stub.
+3. **Nova mirror dependency:** Since Nova has no upstream, friends must clone from the operator's fork. The bundle cannot patch a "clean" mindgraph package; it can only patch an existing Nova install. **Clarify with the operator** whether the bundle should assume Nova is already present or whether Phase B should scaffold a minimal Nova stub.
 
 4. **Vault read auto-force tracing (rule 5):** The `.trace-forced` marker is written but not yet read by anything in this phase. Phase C (walking-skeleton) will implement the agent-side reader that auto-enables tracing on rule-5 triggers.
 

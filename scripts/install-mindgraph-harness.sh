@@ -25,7 +25,7 @@ set -euo pipefail
 
 OVERLAY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PATCH_DIR="$OVERLAY_DIR/src/patches"
-MASTERMIND_SRC="$OVERLAY_DIR/src/mastermind"
+MASTERMIND_SRC="$OVERLAY_DIR/templates/MasterMind"
 
 NANOCLAW_PATH=""
 MASTERMIND_PATH=""
@@ -167,34 +167,9 @@ if [ -n "$NOVA_PATH" ]; then
 fi
 
 if [ -n "$NOVA_PATH" ]; then
-  GROUPS_DIR="$NANOCLAW_PATH/groups"
-
-  insert_nova_entries() {
-    local file="$1" kind="$2"
-    # kind is "roots" or "traces"; differs only in whether path ends in /Traces.
-    if grep -q '"v2-manu"' "$file"; then
-      echo "  [skip] $(basename "$file") (v2-manu already registered)"
-      return 0
-    fi
-
-    local suffix=""
-    [ "$kind" = "traces" ] && suffix="/Traces"
-
-    local entry1='    { scope: "v2-testagent", label: "v2 TestAgent", path: "'"$GROUPS_DIR"'/dm-with-max'"$suffix"'" },'
-    local entry2='    { scope: "v2-manu",      label: "Manu (v2)",   path: "'"$GROUPS_DIR"'/manu'"$suffix"'" },'
-
-    # Insert before the line that closes the return array. The closing line
-    # is `  ];` at the start of a line. We insert just before it.
-    awk -v e1="$entry1" -v e2="$entry2" '
-      /^[[:space:]]*\];/ && !done { print e1; print e2; done=1 }
-      { print }
-    ' "$file" > "$file.harness-tmp" && mv "$file.harness-tmp" "$file"
-
-    echo "  [ok]   $(basename "$file") (+ v2-testagent, v2-manu)"
-  }
-
-  insert_nova_entries "$ROOTS" "roots"
-  insert_nova_entries "$TRACES" "traces"
+  echo "  [note] Nova present at $NOVA_PATH — agent registration is per-agent,"
+  echo "         done by scripts/new-agent.sh as you create each agent."
+  echo "         (No Nova edits made here.)"
 fi
 
 # ----- step 4: build --------------------------------------------------------

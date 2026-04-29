@@ -1,8 +1,8 @@
 diff --git a/src/log.ts b/src/log.ts
-index d1e820c..fef0091 100644
+index d1e820c..051cf24 100644
 --- a/src/log.ts
 +++ b/src/log.ts
-@@ -1,6 +1,138 @@
+@@ -1,6 +1,143 @@
 +import fs from 'fs';
 +import path from 'path';
 +
@@ -43,13 +43,16 @@ index d1e820c..fef0091 100644
 +
 +/**
 + * Map an agent group folder to the MindGraph node that represents the agent's
-+ * entry/exit point. Mirrors v1 convention (jasmine, jarvis): node_id = the
-+ * agent's Soul.md (`<scope>:soul`). Used by router (entry) and delivery (exit)
-+ * so a trace's first and last events land on the same canonical node.
++ * entry/exit point. Default convention: node_id = the agent's Soul.md
++ * (`<folder>:soul`). Add per-folder overrides here as you create agents whose
++ * scope name differs from their group folder name.
++ *
++ * Used by router (entry) and delivery (exit) so a trace's first and last
++ * events land on the same canonical node.
 + */
 +export function entryNodeForAgentFolder(folder: string): string {
-+  if (folder === 'manu') return 'manu:soul';
-+  if (folder === 'dm-with-max') return 'v2-testagent:claude.local';
++  // Per-agent overrides go here. Example:
++  //   if (folder === 'myagent') return 'myagent:soul';
 +  return `${folder}:claude.local`;
 +}
 +
@@ -57,10 +60,12 @@ index d1e820c..fef0091 100644
 + * MindGraph scope (the prefix before the colon in node_ids) for an agent
 + * group folder. The container's PreToolUse hook reads this to compose
 + * intermediate-event node_ids like `<scope>:goal`, `<scope>:protocols`.
++ *
++ * Default: scope = folder name. Override per-folder if your scope name differs.
 + */
 +export function traceScopeForAgentFolder(folder: string): string {
-+  if (folder === 'manu') return 'manu';
-+  if (folder === 'dm-with-max') return 'v2-testagent';
++  // Per-agent overrides go here. Example:
++  //   if (folder === 'myagent-folder') return 'myagent-scope';
 +  return folder;
 +}
 +
@@ -141,7 +146,7 @@ index d1e820c..fef0091 100644
  const COLORS: Record<Level, string> = {
    debug: '\x1b[34m',
    info: '\x1b[32m',
-@@ -44,6 +176,10 @@ function emit(level: Level, msg: string, data?: Record<string, unknown>): void {
+@@ -44,6 +181,10 @@ function emit(level: Level, msg: string, data?: Record<string, unknown>): void {
    const tag = `${COLORS[level]}${level.toUpperCase()}${level === 'fatal' ? FULL_RESET : RESET}`;
    const stream = LEVELS[level] >= LEVELS.warn ? process.stderr : process.stdout;
    stream.write(`[${ts()}] ${tag} ${MSG_COLOR}${msg}${RESET}${data ? formatData(data) : ''}\n`);

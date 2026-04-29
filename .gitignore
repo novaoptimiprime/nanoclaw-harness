@@ -1,0 +1,18 @@
+# macOS Finder artifacts
+.DS_Store
+**/.DS_Store
+
+# Editor backup files
+*.bak
+*~
+*.swp
+*.swo
+
+# Test artifacts (intentional throwaway)
+/tmp/
+
+# Should never be in this repo:
+node_modules/
+.env
+.env.local
+.env.*.local

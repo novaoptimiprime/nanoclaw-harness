@@ -14,7 +14,7 @@ Skip to **Run install** if all of these are true:
 - `src/log.ts` in the target nanoclaw contains `recordInboundForSession`
 - `container/agent-runner/src/providers/claude.ts` contains `VAULT_OWN_GROUP`
 - `MasterMind/README.md` and `MasterMind/Vault.md` exist at your MasterMind path
-- (If using Nova) `packages/mindgraph/src/roots.ts` contains `"v2-manu"`
+- (If using Nova) per-agent entries in `packages/mindgraph/src/roots.ts` are added as you scaffold agents; that step lives in `scripts/new-agent.sh`, not in this install
 
 Otherwise continue. Every step is safe to re-run.
 
@@ -55,7 +55,7 @@ Sentinel and trace paths are hardcoded by convention:
 
 ## Customization
 
-The bundled patches map two agent folder names — `manu` and `dm-with-max` — to MindGraph scopes (`manu`, `v2-testagent`). Other folders fall back to `<folder>:claude.local`. To add scopes for your own agents, edit `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()` in the patched `src/log.ts` after install.
+The baseline patches don't hardcode any folder-to-scope mappings — every agent folder anchors traces on `<folder>:claude.local` by default. To anchor a specific agent on `<scope>:soul` (the recommended pattern once an agent has a `Mind/Soul.md`), add a per-folder override in `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()` in the patched `src/log.ts`. `scripts/new-agent.sh` prints the exact override snippet for each agent it scaffolds.
 
 ## Restart
 
@@ -95,8 +95,8 @@ Pass `--mastermind=PATH` explicitly. The script will create the directory if nee
 
 ### Nova entries already present
 
-The script greps for `"v2-manu"` in `roots.ts` and skips if found. To re-register with a different path, remove the existing entries first or edit the file by hand.
+Per-agent registration is handled by `scripts/new-agent.sh`, which greps for the agent's slug in `roots.ts` and skips if found. To re-register with a different path, remove the existing entry first or edit the file by hand.
 
-### Agent folder names differ from `manu` / `dm-with-max`
+### Anchoring a specific agent on `<scope>:soul` instead of the fallback
 
-Open the post-install `src/log.ts` in the nanoclaw checkout and edit the two mapping functions. The fallback (`<folder>:claude.local`) is fine for any folder you don't explicitly map — you just won't get a stable Soul-anchored entry node for that agent's traces.
+Open the post-install `src/log.ts` in the nanoclaw checkout and add per-folder overrides to `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()`. The fallback (`<folder>:claude.local`) is fine for any folder you don't explicitly map — you just won't get a stable Soul-anchored entry node for that agent's traces.

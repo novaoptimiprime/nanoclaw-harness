@@ -1,0 +1,3 @@
+# Placeholder so the empty Vault/ folder is committed.
+# Sensitive operator-shared documents go here at runtime, governed by MasterMind/Vault.md rules
+# and enforced by the harness Vault gate at the container's PreToolUse hook.

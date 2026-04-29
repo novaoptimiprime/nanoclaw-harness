@@ -1,79 +1,110 @@
-# nanoclaw-mindgraph-harness
+# agent-fleet baseline
 
-A drop-in observability + safety harness **for [nanoclaw v2](https://github.com/qwibitai/nanoclaw) (the 2.0.x line, tested against `v2.0.17`; minimum floor `v2.0.10`)** — adds JSONL request tracing, a per-agent Vault gate, MindGraph-ready wiki conventions, and an optional viewer integration with [Nova](#wiring-nova-optional). Not compatible with nanoclaw 1.x, `nanoclaw-pro`, or other agent runtimes.
+A self-contained baseline for spinning up new agent-fleet projects. Aggregates a tested stack — [nanoclaw v2](https://github.com/qwibitai/nanoclaw) runtime + JSONL request tracing + per-agent Vault gate + [Nova](nova/) MindGraph viewer + MasterMind conventions + Karpathy-style wiki shape — into one repo. Clone once; use to bootstrap any number of fleets.
 
-> **Looking for the deep walkthrough?** [CAPABILITIES.md](CAPABILITIES.md) is the authoritative document — architecture diagrams, per-capability detail, a Claude-specific integration playbook, server-start guidance, and a step-by-step for creating a new agent. This README covers install only. If you're an LLM reading the repo, start at [CLAUDE.md](CLAUDE.md).
+> **Built specifically for nanoclaw v2** (the 2.0.x line, tested at `v2.0.17`; floor `v2.0.10`). Not compatible with nanoclaw 1.x, `nanoclaw-pro`, or other agent runtimes.
+>
+> **Looking for the deep walkthrough?** [CAPABILITIES.md](CAPABILITIES.md) is the full prose reference. [ARCHITECTURE.md](ARCHITECTURE.md) is the visual one (diagrams + layered model). LLMs reading the repo cold should start at [CLAUDE.md](CLAUDE.md).
 
-The harness installs as an overlay on top of an unmodified nanoclaw v2 checkout. Five components ship as one `/add-mindgraph-harness` skill:
+## What you get when you bootstrap a new project
 
-1. **Tracing** — host JSONL emitter (`src/log.ts`) + container PreToolUse intermediates (`container/agent-runner/src/providers/claude.ts`) + host→container sentinel-file plumbing (`src/router.ts`, `src/delivery.ts`).
-2. **Vault** — PreToolUse path gate in `claude.ts` (own vault → allow + auto-force-trace; cross-agent vault → block).
-3. **Nova MindGraph patches** — `Nova/packages/mindgraph/src/{roots,trace-sources}.ts` for v2 group-folder convention. Optional.
-4. **MasterMind starter pack** — `MasterMind/README.md` (MindGraph conventions + tracing schema) + `MasterMind/Vault.md` (vault rules) every agent RO-mounts and reads at runtime.
-5. **Wiki conventions** — Karpathy-style frontmatter shape (`type: wiki, edges: [...]`) + file naming pattern (Soul/Goal/log/Vault) included in the MasterMind README.
+```
+your-new-project/
+├── CLAUDE.md                           # Project bootstrap pointer (Claude reads this first)
+├── _ProjectWiki/                       # Project wiki (Claude-written)
+│   ├── README.md
+│   ├── Scope.md
+│   ├── Decisions.md
+│   ├── Architecture.md
+│   ├── Progress.md
+│   ├── Prereqs.md
+│   └── Agents/_template.md
+├── MasterMind/                         # Runtime conventions (every agent reads at startup)
+│   ├── README.md                       #   ▸ MindGraph schema
+│   │                                   #   ▸ Tracing schema
+│   │                                   #   ▸ Fleet topology
+│   │                                   #   ▸ Wiki conventions
+│   └── Vault.md                        #   ▸ Five hard Vault rules
+├── nanoclaw-v2/                        # Cloned from upstream + harness patches applied
+├── nova/                               # MindGraph viewer (admin console)
+└── <YourAgents>/                       # Per-agent folders, scaffolded by new-agent.sh
+    └── Mind/                           # Soul, Goal, index, log + custom pages
+```
+
+Plus, in the running fleet:
+
+- One JSONL trace per inbound message at `<your-agents>/Traces/<YYYY-MM-DD>/<id>.jsonl`.
+- A per-agent Vault gate that physically blocks cross-agent vault access at the tool boundary.
+- Nova at `localhost:3000` showing every agent's Mind + traces in a graph viewer.
+- A bootstrappable shape so adding the next agent is one script invocation.
 
 ## Prereqs
 
-- A nanoclaw v2 checkout (tested against upstream `qwibitai/nanoclaw` between v2.0.10 and v2.0.17). The harness applies as `git apply` patches, so the checkout must be a clean working tree on that range.
-- `pnpm` and Node 20+ (already required by nanoclaw v2 itself).
-- `bash`, `git`, `awk` (standard on macOS and Linux).
-- (Optional) A Nova checkout if you want the MindGraph viewer to surface your traces.
+- macOS or Linux (tested on macOS; Linux supported).
+- Docker Desktop (required by nanoclaw — Docker-per-message agent runtime).
+- Node >= 20 + pnpm.
+- `git`, `bash`, `awk` (standard).
+- An Anthropic API key (provisioned per-project via OneCLI Vault during nanoclaw setup).
 
-## Install
-
-Clone this repo, then run the install script against your nanoclaw v2 checkout. The script is idempotent — re-running it is safe.
+## Bootstrap a new project
 
 ```bash
-git clone https://github.com/<org>/nanoclaw-mindgraph-harness.git
+git clone https://github.com/novaoptimiprime/nanoclaw-mindgraph-harness.git
 cd nanoclaw-mindgraph-harness
 
-./setup/install-mindgraph-harness.sh \
-  --nanoclaw=/path/to/your/nanoclaw-v2 \
-  --mastermind=/path/to/your/MasterMind \
-  --nova=/path/to/your/Nova         # optional
+./scripts/bootstrap-project.sh \
+  --target=/path/to/your-new-project \
+  --project-name="Your Project Name" \
+  --master-name="Jarvis"
 ```
 
-If you run the script from inside your nanoclaw v2 checkout with no flags, it auto-detects: `--nanoclaw=$PWD`, `--mastermind=$PWD/../MasterMind`, no Nova.
+That script lays down templates, clones nanoclaw, applies the harness patches, copies Nova, registers the project's paths, and initializes git. Idempotent — safe to re-run.
 
-What the script does, in order:
+After it finishes (~30 seconds), follow the post-bootstrap steps it prints:
 
-1. Apply four `git apply` patches to the nanoclaw checkout (`src/log.ts`, `src/router.ts`, `src/delivery.ts`, `container/agent-runner/src/providers/claude.ts`). It checks each patch with `git apply --reverse --check` first and skips any patch that's already applied.
-2. (If `--mastermind=`) copy `MasterMind/README.md` and `MasterMind/Vault.md` into the target directory if they don't already exist. **Existing files are not overwritten.**
-3. (If `--nova=`) append two scope entries to `packages/mindgraph/src/roots.ts` and two entries to `packages/mindgraph/src/trace-sources.ts` (one per agent group folder). Skipped if the entries are already present.
-4. Run `pnpm install && pnpm run build` in the nanoclaw checkout to compile the new code.
+1. `cd <target>/nanoclaw-v2 && pnpm install && pnpm run build`
+2. `pnpm run setup` (interactive — provisions OneCLI Vault + Anthropic key).
+3. Start the daemon: `launchctl kickstart -k "gui/$(id -u)/com.nanoclaw"` (macOS) / `systemctl --user start nanoclaw` (Linux).
+4. Start Nova: `cd <target>/nova && pnpm install && pnpm run dev`.
+5. Create your first agent: `./scripts/new-agent.sh --project=<target> --name="YourAgent"`.
 
-After install, restart your nanoclaw service so it picks up the new build. The harness adds no new env vars — the existing `TRACING_ENABLED` flag (already documented by nanoclaw) controls trace emission.
+## Add an agent to an existing project
 
-## What you get
+```bash
+./scripts/new-agent.sh \
+  --project=/path/to/your-project \
+  --name="Hector" \
+  --master=jarvis
+```
 
-Once installed and your agent answers an inbound message, you'll find:
+Stamps the agent template, substitutes placeholders, registers the agent in Nova, and prints the scope-mapping snippet to add to `nanoclaw-v2/src/log.ts`. Operator finishes by writing `Mind/Soul.md` + `Mind/Goal.md`, adding the snippet, rebuilding, and wiring a channel.
 
-- A JSONL trace file at `<nanoclaw>/groups/<agent_folder>/Traces/<YYYY-MM-DD>/<inbound_msg_id>.jsonl` per request.
-- A trace index at `<nanoclaw>/groups/<agent_folder>/Traces/index.jsonl` listing every trace in summary form.
-- Sentinel files at `<nanoclaw>/data/v2-sessions/<agentGroupId>/<sessionId>/.current-trace-id` (and `.current-agent`) used by the container to attribute intermediate `read`/`write`/`vault_access` events to the right inbound.
-- Vault enforcement: any tool call that touches another agent's `Vault/` is blocked; any tool call that touches the agent's own `Vault/` writes a `.trace-forced` marker and emits a `vault_access` event.
+## Apply the harness to an existing nanoclaw checkout
 
-If you wired Nova, the new agents show up in the viewer's left panel under their scopes (default scopes are `v2-testagent` and `v2-manu`; rename in `roots.ts` and `trace-sources.ts` if you have different agent folders).
+If you already have a nanoclaw v2 install and want only the harness (not a full project bootstrap):
 
-## Wiring Nova (optional)
+```bash
+./scripts/install-mindgraph-harness.sh \
+  --nanoclaw=/path/to/your/nanoclaw-v2 \
+  --mastermind=/path/to/your/MasterMind \
+  --nova=/path/to/your/Nova        # optional
+```
 
-The harness ships unaware of any specific Nova distribution — you bring your own. If you have a Nova checkout with `packages/mindgraph/src/{roots,trace-sources}.ts`, the install script appends two registration entries (using absolute paths to your nanoclaw groups). If you don't have Nova, skip the `--nova=` flag and you'll still get JSONL traces on disk you can inspect with any tool.
+This is the lower-level operation that `bootstrap-project.sh` invokes internally.
 
-## Customizing agent scopes
+## What this baseline does NOT include
 
-The bundled patches hardcode two agent group folder names — `manu` and `dm-with-max` — into `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()` in `src/log.ts`. If your agents have different folder names, edit those two functions in the patched `src/log.ts` after install. The fallback (`<folder>:claude.local`) is sane for any folder you don't explicitly map.
-
-## What's not in the bundle
-
-- The Discord channel adapter our local nanoclaw uses (`src/channels/discord.ts`) is unrelated feature work — not bundled.
-- The `package.json` version field is not modified; you keep whatever upstream nanoclaw version you cloned.
-- `pnpm-lock.yaml` is not patched — `pnpm install` after the patches will update it cleanly because the harness adds zero new npm dependencies.
+- **nanoclaw itself.** It's cloned from `qwibitai/nanoclaw` upstream at install time. The baseline patches it; it doesn't fork it.
+- **OneCLI Vault setup.** That's a nanoclaw-native concern — run `pnpm run setup` in the cloned nanoclaw checkout.
+- **Channel adapters** (Discord, Slack, Telegram, etc.) — nanoclaw ships those as separate skills (e.g. `/add-discord`); install per-agent as needed.
+- **Agent identities, Souls, or Goals.** Each agent writes its own; the template is a starting scaffold.
+- **The `Anthropic` SDK / API key.** Provisioned via OneCLI Vault during nanoclaw setup.
 
 ## Caveats
 
-- **Patch baseline drift:** these patches were generated against upstream `qwibitai/nanoclaw` `origin/main` at commit `a4346f5` (v2.0.17). They apply cleanly against any nanoclaw checkout where `src/log.ts`, `src/router.ts`, `src/delivery.ts`, and `container/agent-runner/src/providers/claude.ts` haven't drifted from that revision. If `git apply --check` fails for you, your checkout has diverged — manual three-way merge required.
-- **Two unrelated cleanups in the router patch:** the `src/router.ts` patch removes a `stopTypingRefresh` import and simplifies one `accumulate` policy branch. These are entanglements with the harness work in our development tree, not harness logic. They are harmless on a fresh upstream checkout but will conflict if you've customized those exact lines.
-- **Nova is unscoped:** the bundled Nova entries assume your nanoclaw groups live at the absolute path you pass via `--nanoclaw=`. If you move your nanoclaw later, re-run the install script with the new path or edit `roots.ts` / `trace-sources.ts` by hand.
+- **Patch baseline drift.** Patches are pinned against upstream `qwibitai/nanoclaw` `origin/main` at commit `34f3612` (= `v2.0.17`). If your checkout has diverged from that range, `git apply --check` will fail; manual three-way merge required. Pinned floor: `v2.0.10`.
+- **Nova vendored.** This repo includes a snapshot of [Nova](nova/). When Nova evolves upstream (in a future public Nova repo or a working copy you maintain elsewhere), update it here by replacing the snapshot.
+- **Bootstrap script default is `--nova=copy`** (each project gets its own Nova copy). If you set `--nova=symlink`, project-specific entries are written into the baseline's shared Nova — only use if you want one Nova showing all your projects.
 
 ## License
 

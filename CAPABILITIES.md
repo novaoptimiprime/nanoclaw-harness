@@ -103,7 +103,7 @@ sequenceDiagram
     R->>L: log({trace: {trace_id: msg-abc123, event: 'entry'}})
     L->>FS: append entry to<br/>Traces/2026-04-29/msg-abc123.jsonl
     L->>FS: append summary to<br/>Traces/index.jsonl
-    R->>FS: write .current-trace-id = msg-abc123<br/>write .current-agent = manu
+    R->>FS: write .current-trace-id = msg-abc123<br/>write .current-agent = &lt;scope&gt;
     R->>C: spawn / wake container
 
     Note over C: Agent reads MasterMind/<br/>and its own Mind/
@@ -163,10 +163,10 @@ sequenceDiagram
 **Example trace file content** (one inbound, four events):
 
 ```jsonl
-{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:00.100Z","agent":"manu","node_id":"manu:soul","event":"entry","request_summary":"Summarize today's HN posts about distributed systems"}
-{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:00.421Z","agent":"manu","node_id":"manu:goal","event":"read"}
-{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:01.123Z","agent":"manu","node_id":"manu:vault:hn-2026-04","event":"vault_access","metadata":{"decision":"allow","reason":"own-vault auto-trace"}}
-{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:02.500Z","agent":"manu","node_id":"manu:soul","event":"exit","metadata":{"response_length":312}}
+{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:00.100Z","agent":"myagent","node_id":"myagent:soul","event":"entry","request_summary":"Summarize today's HN posts about distributed systems"}
+{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:00.421Z","agent":"myagent","node_id":"myagent:goal","event":"read"}
+{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:01.123Z","agent":"myagent","node_id":"myagent:vault:somefile","event":"vault_access","metadata":{"decision":"allow","reason":"own-vault auto-trace"}}
+{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:06:02.500Z","agent":"myagent","node_id":"myagent:soul","event":"exit","metadata":{"response_length":312}}
 ```
 
 **Event types** the harness emits:
@@ -191,7 +191,7 @@ sequenceDiagram
 - `TRACING_ENABLED` — already documented by nanoclaw + in `MasterMind/README.md`. When `!= 'true'`, agents skip emitting events from inside the container (host anchors still fire). Set in `~/.config/nanoclaw/tracing.json` per nanoclaw convention.
 - No new env vars introduced by this overlay.
 
-**Customizing scopes** (how agent folder names map to trace `node_id` prefixes): edit `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()` in the patched `src/log.ts` after install. Default mappings: `manu` → `manu`, `dm-with-max` → `v2-testagent`. Anything else falls back to `<folder>:claude.local`.
+**Customizing scopes** (how agent folder names map to trace `node_id` prefixes): edit `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()` in the patched `src/log.ts` after install. The baseline ships with no per-folder overrides — every agent folder gets `<folder>:claude.local` as its entry node and `<folder>` as its scope. To anchor a particular agent's traces on `<scope>:soul` instead (recommended once that agent has a `Mind/Soul.md`), add a one-line override; `scripts/new-agent.sh` prints the exact snippet for each agent it scaffolds.
 
 ---
 
@@ -202,7 +202,7 @@ sequenceDiagram
 **Where it lives in the bundle:**
 
 - `src/patches/04-claude.ts.patch` — adds `extractVaultPaths`, `isOwnVaultPath`, `evaluateVaultPath`, `markTraceForced` helpers, plus the PreToolUse hook integration.
-- `src/mastermind/Vault.md` — the rule statements the gate enforces.
+- `templates/MasterMind/Vault.md` — the rule statements the gate enforces.
 
 **Behavior:**
 
@@ -215,24 +215,24 @@ sequenceDiagram
 **Example block message** the agent sees:
 
 ```
-Vault rule 1 (per-agent isolation): you may not access "/workspace/agent/Vault/manu-secret.pdf" — that's another agent's Vault, or a path that looks like one. If you genuinely need this, ask the operator directly per MasterMind/Vault.md (no agent→agent vault transfer).
+Vault rule 1 (per-agent isolation): you may not access "/workspace/agent/Vault/other-agent-secret.pdf" — that's another agent's Vault, or a path that looks like one. If you genuinely need this, ask the operator directly per MasterMind/Vault.md (no agent→agent vault transfer).
 ```
 
 **Example trace event** when a block fires:
 
 ```jsonl
-{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:07:14.200Z","agent":"veda","node_id":"veda:vault:cross-agent-block","event":"vault_access","metadata":{"decision":"block","reason":"cross-agent vault path","path":"/workspace/agent/Vault/manu-secret.pdf"}}
+{"trace_id":"msg-abc123","timestamp":"2026-04-29T15:07:14.200Z","agent":"agent-a","node_id":"agent-a:vault:cross-agent-block","event":"vault_access","metadata":{"decision":"block","reason":"cross-agent vault path","path":"/workspace/agent/Vault/other-agent-secret.pdf"}}
 ```
 
 **How to test the gate works:**
 
 After install, exercise it manually:
 
-1. Spin up two agents (e.g. `manu` and `veda`).
-2. From the `veda` channel, send a message asking veda to `Read /workspace/agent/Vault/manu-secret.pdf` (or any path with `Vault/` and another agent's name).
+1. Spin up two agents (e.g. `agent-a` and `agent-b`).
+2. From the `agent-b` channel, send a message asking agent-b to `Read /workspace/agent/Vault/other-agent-secret.pdf` (or any path with `Vault/` and another agent's name).
 3. Confirm: agent reports "I can't read that — Vault rule 1 …" and the trace JSONL contains a `vault_access` event with `decision: 'block'`.
 
-**Configuration:** none. Path matching is rule-driven, not config-driven. The five hard rules are enumerated in `MasterMind/Vault.md` (shipped in `src/mastermind/Vault.md`) — agents read them at startup.
+**Configuration:** none. Path matching is rule-driven, not config-driven. The five hard rules are enumerated in `MasterMind/Vault.md` (shipped in `templates/MasterMind/Vault.md`) — agents read them at startup.
 
 **What the gate does NOT do:**
 
@@ -248,31 +248,31 @@ After install, exercise it manually:
 
 **Where it lives in the bundle:**
 
-- `setup/install-mindgraph-harness.sh` — the awk-insert logic (lines around `insert_nova_entries`). No bundled `.ts` files; entries are generated inline because they need absolute paths to the operator's nanoclaw groups.
+- `scripts/install-mindgraph-harness.sh` — the awk-insert logic (lines around `insert_nova_entries`). No bundled `.ts` files; entries are generated inline because they need absolute paths to the operator's nanoclaw groups.
 
 **What it does** when the operator passes `--nova=PATH`:
 
 1. Confirms `<nova>/packages/mindgraph/src/roots.ts` and `trace-sources.ts` exist.
-2. Greps for `"v2-manu"` — if present, skips (already registered).
+2. (Removed in the baseline restructure — Nova registration is now per-agent via `scripts/new-agent.sh`.)
 3. Otherwise, inserts two entries before the closing `];` of each file's `return [...]` array, with absolute paths derived from `--nanoclaw=`.
 
 **Generated entries** (for nanoclaw at `/path/to/nanoclaw-v2`):
 
 ```ts
 // roots.ts
-{ scope: "v2-testagent", label: "v2 TestAgent", path: "/path/to/nanoclaw-v2/groups/dm-with-max" },
-{ scope: "v2-manu",      label: "Manu (v2)",   path: "/path/to/nanoclaw-v2/groups/manu" },
+{ scope: "myagent", label: "My Agent", path: "/path/to/nanoclaw-v2/groups/myagent" },
+{ scope: "anotheragent", label: "Another Agent", path: "/path/to/nanoclaw-v2/groups/anotheragent" },
 
 // trace-sources.ts
-{ scope: "v2-testagent", label: "v2 TestAgent", path: "/path/to/nanoclaw-v2/groups/dm-with-max/Traces" },
-{ scope: "v2-manu",      label: "Manu (v2)",   path: "/path/to/nanoclaw-v2/groups/manu/Traces" },
+{ scope: "myagent", label: "My Agent", path: "/path/to/nanoclaw-v2/groups/myagent/Traces" },
+{ scope: "anotheragent", label: "Another Agent", path: "/path/to/nanoclaw-v2/groups/anotheragent/Traces" },
 ```
 
 **How to use it:**
 
 - `--nova=/path/to/your/nova` on the install command. Skip the flag if you don't have Nova.
 - After install, restart Nova; the new agents appear in the left panel.
-- To register more agents (or rename), edit `roots.ts` and `trace-sources.ts` directly — the awk-insert is idempotent only on the `v2-manu` marker, so adding more is a manual sed/edit.
+- To register agents, use `scripts/new-agent.sh --project=PATH --name=AgentName` (it handles the awk-insert per agent). To rename or remove, edit `roots.ts` and `trace-sources.ts` directly.
 
 **What this wiring does NOT do:**
 
@@ -288,10 +288,10 @@ After install, exercise it manually:
 
 **Where it lives in the bundle:**
 
-- `src/mastermind/README.md` — the master ground-rules doc. Sections: Invariants, Protocols, MindGraph Conventions, Fleet Topology, Request Tracing, Confidential Files (pointer to Vault.md).
-- `src/mastermind/Vault.md` — the five Vault rules + cross-agent request workflow + violation consequence.
+- `templates/MasterMind/README.md` — the master ground-rules doc. Sections: Invariants, Protocols, MindGraph Conventions, Fleet Topology, Request Tracing, Confidential Files (pointer to Vault.md).
+- `templates/MasterMind/Vault.md` — the five Vault rules + cross-agent request workflow + violation consequence.
 
-**Install behavior:** `setup/install-mindgraph-harness.sh` copies these into the operator's `--mastermind=PATH` directory **only if missing**. Existing files are never overwritten. This means:
+**Install behavior:** `scripts/install-mindgraph-harness.sh` copies these into the operator's `--mastermind=PATH` directory **only if missing**. Existing files are never overwritten. This means:
 
 - A fresh install bootstraps the operator's MasterMind from the bundle.
 - A re-install after the operator has customized `MasterMind/` is a no-op for these two files (operator's edits stay).
@@ -314,7 +314,7 @@ The container's bind-mount config (set up by nanoclaw, not by this overlay) RO-m
 
 **Where it lives in the bundle:**
 
-- `src/mastermind/README.md` § "MindGraph Conventions" (lines ~56–154) — the schema, valid types, ID scopes, edge relations, worked example, required files.
+- `templates/MasterMind/README.md` § "MindGraph Conventions" (lines ~56–154) — the schema, valid types, ID scopes, edge relations, worked example, required files.
 
 **Frontmatter schema:**
 
@@ -335,19 +335,19 @@ edges:                  # optional — explicit relationships
 ```yaml
 ---
 type: soul
-label: "Manu — Identity & Voice"
-id: "manu:soul"
+label: "MyAgent — Identity & Voice"
+id: "myagent:soul"
 properties:
   version: 1
   last_updated: "2026-04-29"
 edges:
-  - {to: "manu:goal", relation: "supports"}
+  - {to: "myagent:goal", relation: "supports"}
   - {to: "mastermind:readme", relation: "governed_by"}
   - {to: "jarvis:roster", relation: "coordinates_via"}
 ---
 ```
 
-**Valid `type` values:** `soul`, `goal`, `memory`, `project_doc`, `ground_rule`, `decision`, `tool`, `channel`, `wiki`. Full list with semantics in `src/mastermind/README.md`.
+**Valid `type` values:** `soul`, `goal`, `memory`, `project_doc`, `ground_rule`, `decision`, `tool`, `channel`, `wiki`. Full list with semantics in `templates/MasterMind/README.md`.
 
 **Standard edge `relation` values:** `supports`, `constrained_by`, `governed_by`, `inherits_rules`, `part_of`, `catalogs`, `delegates_to`, `delegates_from`, `implements`, `informs`, `calibrated_by`, `distills`, `generates`, `produces`, `closes`, `paired_with`, `mentions`, `coordinates_via`, `reports_to`, `coordinates`, `hands_off_to`. Invent new ones only when nothing fits — and document them.
 
@@ -409,10 +409,10 @@ nanoclaw-mindgraph-harness/
 
 **By size and importance:**
 
-- **Largest by line count:** `PHASE-A-CATALOG.md` (~420 lines), `CAPABILITIES.md` (this file), `src/mastermind/README.md` (~310 lines).
-- **Most important to read for understanding:** `CAPABILITIES.md`, then `src/mastermind/README.md` (the runtime conventions).
+- **Largest by line count:** `PHASE-A-CATALOG.md` (~420 lines), `CAPABILITIES.md` (this file), `templates/MasterMind/README.md` (~310 lines).
+- **Most important to read for understanding:** `CAPABILITIES.md`, then `templates/MasterMind/README.md` (the runtime conventions).
 - **Most important to read for debugging:** `PHASE-A-CATALOG.md` plus the four `.patch` files in `src/patches/`.
-- **Most important for installing:** `README.md` + `setup/install-mindgraph-harness.sh`.
+- **Most important for installing:** `README.md` + `scripts/install-mindgraph-harness.sh`.
 
 ---
 
@@ -423,7 +423,7 @@ A typical lifecycle:
 **1. Install.** Operator clones this repo, runs:
 
 ```bash
-./setup/install-mindgraph-harness.sh \
+./scripts/install-mindgraph-harness.sh \
   --nanoclaw=/path/to/nanoclaw-v2 \
   --mastermind=/path/to/MasterMind \
   --nova=/path/to/Nova           # optional
@@ -467,13 +467,13 @@ The operator already has a working **nanoclaw v2** install (cloned from `qwibita
 1. **Where is your nanoclaw v2 checkout?** (You'll pass this as `--nanoclaw=PATH`.) Confirm it's a git clone (not a tarball download), since the installer uses `git apply`. Confirm `git status` shows a clean working tree on the four target files — uncommitted local edits to those files will conflict.
 2. **Where is your MasterMind folder?** (Or: do you want me to create one?) If they don't have one, default to `<nanoclaw_parent>/MasterMind/`. The installer creates it if missing.
 3. **Do you have Nova installed?** If yes, get the path (`--nova=PATH`). If no, skip Nova wiring; they can re-run the installer with `--nova=` later.
-4. **What are your agent group folder names?** Look at `<nanoclaw>/groups/`. The bundled patches map two folder names (`manu`, `dm-with-max`) to MindGraph scopes. If the operator's folders are different, either rename their folders to match, or — after install — edit `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()` in the patched `src/log.ts` to add their mappings.
+4. **What are your agent group folder names?** Look at `<nanoclaw>/groups/`. The baseline patches don't hardcode any folder mappings — every folder anchors traces on `<folder>:claude.local` by default. If you want agents anchored on their `Soul.md` instead (recommended), add per-folder overrides in `entryNodeForAgentFolder()` and `traceScopeForAgentFolder()` in the patched `src/log.ts`. `scripts/new-agent.sh` prints the override snippet for each agent it scaffolds.
 
 ### Installation sequence
 
 ```bash
 # From the overlay repo root:
-./setup/install-mindgraph-harness.sh \
+./scripts/install-mindgraph-harness.sh \
   --nanoclaw=/path/to/nanoclaw-v2 \
   --mastermind=/path/to/MasterMind \
   --nova=/path/to/Nova       # omit if no Nova
@@ -583,8 +583,8 @@ Then open the URL Nova prints (usually `http://localhost:3000`). The left panel 
    ```
 2. If the lines are present but Nova still doesn't render them, check that the path on disk exists and is readable:
    ```bash
-   ls /path/to/nanoclaw-v2/groups/manu/         # should exist
-   ls /path/to/nanoclaw-v2/groups/manu/Traces/  # may be empty until first inbound
+   ls /path/to/nanoclaw-v2/groups/myagent/         # should exist
+   ls /path/to/nanoclaw-v2/groups/myagent/Traces/  # may be empty until first inbound
    ```
 3. Restart Nova (`pnpm run dev` reloads on file change but the registry is read once).
 
@@ -610,15 +610,15 @@ Edit the patched `src/log.ts` in the nanoclaw checkout (post-install, this file 
 
 ```ts
 export function entryNodeForAgentFolder(folder: string): string {
-  if (folder === 'manu') return 'manu:soul';
-  if (folder === 'dm-with-max') return 'v2-testagent:claude.local';
+  if (folder === 'myagent-folder') return 'myagent-scope:soul';
+  if (folder === 'myagent-folder') return 'myagent-scope:soul';
   if (folder === 'sona') return 'sona:soul';        // NEW
   return `${folder}:claude.local`;
 }
 
 export function traceScopeForAgentFolder(folder: string): string {
-  if (folder === 'manu') return 'manu';
-  if (folder === 'dm-with-max') return 'v2-testagent';
+  if (folder === 'myagent-folder') return 'myagent-scope';
+  if (folder === 'myagent-folder') return 'myagent-scope';
   if (folder === 'sona') return 'sona';             // NEW
   return folder;
 }
@@ -745,7 +745,7 @@ A JSONL file should exist. Done — Sona is a first-class fleet member.
 
 ## Glossary
 
-- **Agent.** A long-running per-domain assistant in the fleet (Manu = tech news, Atlas = travel, etc.). Lives in its own folder under `<nanoclaw>/groups/`.
+- **Agent.** A long-running per-domain assistant in the fleet (one agent per domain — e.g. tech news, travel, security, finance). Lives in its own folder under `<nanoclaw>/groups/`.
 - **Agent group folder.** The on-disk directory representing one agent inside nanoclaw. Holds the agent's `Mind/`, `Vault/`, `Traces/`, etc.
 - **Container.** The Docker container nanoclaw spawns to run one inbound message. Coalesced — may handle multiple inbounds in succession before idling out.
 - **Entry node.** The MindGraph node a trace anchors on. Defaults to `<agent>:soul` (the agent's Soul.md). Configurable via `entryNodeForAgentFolder()`.
@@ -757,7 +757,7 @@ A JSONL file should exist. Done — Sona is a first-class fleet member.
 - **Nova.** The optional MindGraph viewer the operator may run alongside nanoclaw. Reads JSONL traces and Mind frontmatter to render an interactive graph.
 - **Outbound.** The agent's reply, delivered back through the same channel as the inbound.
 - **PreToolUse hook.** A hook in the Claude Agent SDK that fires before every tool call inside the container. The Vault gate runs here.
-- **Scope.** The prefix in a node `id` (`manu:soul` → scope is `manu`). One scope per agent.
+- **Scope.** The prefix in a node `id` (`myagent:soul` → scope is `myagent`). One scope per agent.
 - **Sentinel file.** A small file written to `<nanoclaw>/data/v2-sessions/<grp>/<sess>/` by the host to pass per-invocation context (trace_id, agent name) to the container without an env-var rewrite.
 - **Soul / Goal.** The two foundational Mind pages every agent has. Soul = identity and voice. Goal = purpose and success criteria.
 - **trace_id.** The inbound message id, reused as the unique key for all events in one round-trip. Same value lands in `entry`, `read`/`write`/`vault_access`, and `exit` events.
