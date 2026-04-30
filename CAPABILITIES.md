@@ -82,7 +82,7 @@ flowchart LR
 
 **Solid arrows** are write paths. **Dotted arrows** are reads. Everything coordinates via the filesystem — no extra IPC, no new ports, no new daemons.
 
-The four patched files are the only code-level surface area; everything else (MasterMind, wiki conventions, Nova entries) is text the operator and the agents consume.
+The five patched files are the only code-level surface area; everything else (MasterMind, wiki conventions, Nova entries) is text the operator and the agents consume.
 
 ---
 
@@ -140,7 +140,8 @@ sequenceDiagram
 - `src/patches/01-log.ts.patch` — JSONL sink + helper exports (`recordInboundForSession`, `traceIdForSession`, `entryNodeForAgentFolder`, `traceScopeForAgentFolder`, `writeTraceSentinels`).
 - `src/patches/02-router.ts.patch` — calls those helpers, writes sentinels, emits `entry` event per inbound.
 - `src/patches/03-delivery.ts.patch` — emits `exit` event per outbound, paired by `trace_id` with the most-recent inbound.
-- `src/patches/04-claude.ts.patch` — container-side intermediate event emitter (Mind page reads/writes, vault accesses).
+- `src/patches/04-claude.ts.patch` — container-side intermediate event emitter (Mind page reads/writes, vault accesses). Mind detection supports both layouts: flat group-root files (`/workspace/agent/Soul.md`) and modern `Mind/` subfolder (`/workspace/agent/Mind/Soul.md`, `/workspace/agent/Mind/me/raju.md` etc., with subpaths flattened in slug as `me_raju`).
+- `src/patches/05-container-runner.ts.patch` — three-layer separation. In the per-agent nested install model (`<project>/<RoleFolder>/nanoclaw-v2/`), binds the agent-layer `Mind/Vault/Traces` directly inside `/workspace/agent` so container writes through the relative symlinks at `groups/<folder>/{Mind,Vault,Traces}` reach the agent layer (not a real-dir replacement inside the container's bind-mount sandbox). Heuristic: only fires when the parent of cwd has the sibling dir; shared-install model is unaffected.
 
 **What gets created at runtime:**
 
@@ -396,11 +397,14 @@ nanoclaw-harness/
 │   └── install-harness.sh           Idempotent installer. Runs git apply, copies
 │                                              MasterMind, awk-inserts Nova entries, builds.
 └── src/
-    ├── patches/                               Four git apply patches against nanoclaw v2.
+    ├── patches/                               Five git apply patches against nanoclaw v2.
     │   ├── 01-log.ts.patch                    Tracing — JSONL sink + helper exports.
     │   ├── 02-router.ts.patch                 Tracing — entry events + sentinel writes.
     │   ├── 03-delivery.ts.patch               Tracing — exit events.
-    │   └── 04-claude.ts.patch                 Vault gate + container-side event emitter.
+    │   ├── 04-claude.ts.patch                 Vault gate + container-side event emitter
+    │   │                                      (supports flat + Mind/ subfolder layouts).
+    │   └── 05-container-runner.ts.patch       Three-layer Mind/Vault/Traces nested binds
+    │                                          for the per-agent nested install model.
     └── mastermind/                            MasterMind starter pack (copied to operator's
         │                                      MasterMind/ on install if missing).
         ├── README.md                          Wiki conventions, tracing schema, fleet rules.
@@ -411,7 +415,7 @@ nanoclaw-harness/
 
 - **Largest by line count:** `PHASE-A-CATALOG.md` (~420 lines), `CAPABILITIES.md` (this file), `templates/MasterMind/README.md` (~310 lines).
 - **Most important to read for understanding:** `CAPABILITIES.md`, then `templates/MasterMind/README.md` (the runtime conventions).
-- **Most important to read for debugging:** `PHASE-A-CATALOG.md` plus the four `.patch` files in `src/patches/`.
+- **Most important to read for debugging:** `PHASE-A-CATALOG.md` plus the five `.patch` files in `src/patches/`.
 - **Most important for installing:** `README.md` + `scripts/install-harness.sh`.
 
 ---
@@ -429,7 +433,7 @@ A typical lifecycle:
   --nova=/path/to/Nova           # optional
 ```
 
-The script applies four patches, copies MasterMind starter files (if missing), inserts Nova entries (if `--nova` given), and rebuilds nanoclaw.
+The script applies five patches, copies MasterMind starter files (if missing), inserts Nova entries (if `--nova` given), and rebuilds nanoclaw.
 
 **2. Restart nanoclaw.** `launchctl kickstart -k gui/$UID/com.nanoclaw` (macOS) or `systemctl --user restart nanoclaw` (Linux).
 

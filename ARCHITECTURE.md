@@ -120,7 +120,7 @@ flowchart LR
 
 **Solid arrows** are write paths. **Dotted arrows** are reads. Everything coordinates via the host filesystem — no extra IPC, no new ports, no new daemons.
 
-The four patched files (`router.ts`, `delivery.ts`, `log.ts`, `claude.ts`) are the only code surface area the harness touches. Everything else (MasterMind, wiki conventions, Nova) is text the operator and the agents consume.
+The five patched files (`router.ts`, `delivery.ts`, `log.ts`, `claude.ts`, `container-runner.ts`) are the only code surface area the harness touches. Everything else (MasterMind, wiki conventions, Nova) is text the operator and the agents consume.
 
 ---
 
@@ -229,7 +229,8 @@ Adding the second, third, Nth agent is the same `new-agent.sh` flow — the harn
 | Tracing helpers + JSONL sink | `src/patches/01-log.ts.patch` | Baseline patch into nanoclaw |
 | Sentinel writes + entry events | `src/patches/02-router.ts.patch` | Baseline patch into nanoclaw |
 | Exit events | `src/patches/03-delivery.ts.patch` | Baseline patch into nanoclaw |
-| Vault gate + intermediate events | `src/patches/04-claude.ts.patch` | Baseline patch into nanoclaw |
+| Vault gate + intermediate events (supports flat + `Mind/` subfolder layouts) | `src/patches/04-claude.ts.patch` | Baseline patch into nanoclaw |
+| Three-layer Mind/Vault/Traces nested binds (per-agent install model) | `src/patches/05-container-runner.ts.patch` | Baseline patch into nanoclaw |
 | MindGraph viewer | `nova/` | Vendored in baseline; copied per project |
 | Wiki conventions + Vault rules | `templates/MasterMind/` | Stamped into project on bootstrap |
 | Project wiki shell | `templates/_ProjectWiki/` | Stamped into project on bootstrap |

@@ -1,0 +1,26 @@
+diff --git a/src/container-runner.ts b/src/container-runner.ts
+index 27b0f5c..acb6cee 100644
+--- a/src/container-runner.ts
++++ b/src/container-runner.ts
+@@ -293,6 +293,21 @@ function buildMounts(
+     mounts.push({ hostPath: fragmentsDir, containerPath: '/workspace/agent/.claude-fragments', readonly: true });
+   }
+ 
++  // Three-layer separation: in the per-agent nested install model
++  // (Agents/<RoleFolder>/nanoclaw-v2/), bind the agent-layer Mind/Vault/Traces
++  // directly inside /workspace/agent. Docker permits nested binds; this bypasses
++  // the relative-symlink trap (groups/<folder>/Mind -> ../../../Mind) which the
++  // container preserves as a symlink but cannot resolve outside its bind-mount
++  // sandbox. Heuristic: only fire when the parent of cwd has the sibling dir.
++  // Shared-install model (cwd's parent = the Projects/Agents root) won't match.
++  const agentLayerRoot = path.dirname(process.cwd());
++  for (const sub of ['Mind', 'Vault', 'Traces']) {
++    const hostPath = path.join(agentLayerRoot, sub);
++    if (fs.existsSync(hostPath) && fs.statSync(hostPath).isDirectory()) {
++      mounts.push({ hostPath, containerPath: `/workspace/agent/${sub}`, readonly: false });
++    }
++  }
++
+   // Global memory directory — always read-only.
+   const globalDir = path.join(GROUPS_DIR, 'global');
+   if (fs.existsSync(globalDir)) {
