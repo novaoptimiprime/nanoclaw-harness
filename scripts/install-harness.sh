@@ -10,6 +10,10 @@
 #     --mastermind=/path/to/MasterMind \
 #     --nova=/path/to/Nova            # optional
 #
+# Flags:
+#   --skip-build            do not run pnpm install / pnpm run build
+#   --skip-container-build  do not run ./container/build.sh (skip Docker image)
+#
 # If invoked from inside a nanoclaw v2 checkout with no flags:
 #   --nanoclaw   defaults to $PWD
 #   --mastermind defaults to $PWD/../MasterMind (created if missing)
@@ -20,6 +24,7 @@
 #   1  bad args / target not found
 #   2  patch application failed (target diverged from baseline)
 #   3  pnpm build failed
+#   4  container/build.sh failed (Docker image not produced)
 #
 set -euo pipefail
 
@@ -31,15 +36,17 @@ NANOCLAW_PATH=""
 MASTERMIND_PATH=""
 NOVA_PATH=""
 SKIP_BUILD=false
+SKIP_CONTAINER_BUILD=false
 
 # ----- arg parsing --------------------------------------------------------
 
 for arg in "$@"; do
   case "$arg" in
-    --nanoclaw=*)   NANOCLAW_PATH="${arg#*=}" ;;
-    --mastermind=*) MASTERMIND_PATH="${arg#*=}" ;;
-    --nova=*)       NOVA_PATH="${arg#*=}" ;;
-    --skip-build)   SKIP_BUILD=true ;;
+    --nanoclaw=*)           NANOCLAW_PATH="${arg#*=}" ;;
+    --mastermind=*)         MASTERMIND_PATH="${arg#*=}" ;;
+    --nova=*)               NOVA_PATH="${arg#*=}" ;;
+    --skip-build)           SKIP_BUILD=true ;;
+    --skip-container-build) SKIP_CONTAINER_BUILD=true ;;
     -h|--help)
       sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -190,8 +197,47 @@ else
   fi
 fi
 
+# ----- step 5: container image build ----------------------------------------
+#
+# Without this, the daemon spawns a container that exits 125 on first message
+# because the agent-runner image doesn't exist locally yet. The build script
+# is shipped by nanoclaw at ./container/build.sh and is idempotent (Docker
+# layer cache makes re-runs fast).
+
+if $SKIP_CONTAINER_BUILD; then
+  echo "STEP 5: skip container image build (--skip-container-build)"
+elif [ ! -x "$NANOCLAW_PATH/container/build.sh" ]; then
+  echo "STEP 5: skip container image build (./container/build.sh not found or not executable)"
+else
+  echo "STEP 5: build agent-runner container image (./container/build.sh)"
+  cd "$NANOCLAW_PATH"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "  [WARN] docker not found in PATH. Skipping container build." >&2
+    echo "         Install Docker Desktop / engine and run ./container/build.sh manually." >&2
+  elif ! docker info >/dev/null 2>&1; then
+    echo "  [WARN] docker daemon not reachable. Skipping container build." >&2
+    echo "         Start Docker and run ./container/build.sh manually." >&2
+  else
+    ./container/build.sh >&2 || { echo "  [FAIL] ./container/build.sh failed" >&2; exit 4; }
+    echo "  [ok]   container image built"
+  fi
+fi
+
 echo
 echo "=== done ==="
 echo "Restart your nanoclaw service so it picks up the new build:"
-echo "  macOS:  launchctl kickstart -k \"gui/\$(id -u)/com.nanoclaw\""
+echo "  macOS:  launchctl kickstart -k \"gui/\$(id -u)/<your-nanoclaw-plist-label>\""
+echo "          (e.g. com.nanoclaw, or com.nanoclaw-v2-<hash> if installed via setup --step service)"
 echo "  Linux:  systemctl --user restart nanoclaw"
+echo
+echo "Post-install reminder — known first-run gotchas:"
+echo "  * OneCLI agent created during 'pnpm run setup' defaults to selective"
+echo "    secret mode → first Anthropic API call returns 401 silently. After"
+echo "    setup, flip with: onecli agents set-secret-mode --id <agent-id> --mode all"
+echo "  * Router defaults unknown_sender_policy='strict' → unregistered Discord"
+echo "    user IDs get silently dropped. Register yourself as owner in v2.db's"
+echo "    user_roles table before sending the first probe."
+echo "  * setup --step register defaults engage_mode='mention' → for dedicated"
+echo "    single-agent channels, switch to engage_mode='pattern' engage_pattern='.'"
+echo "    in messaging_group_agents after registration."
