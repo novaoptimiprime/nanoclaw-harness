@@ -37,7 +37,7 @@ What this does, in order, all idempotent and safe to re-run:
 1. Lays down `_ProjectWiki/`, `MasterMind/`, and `CLAUDE.md` from `templates/` into the target.
 2. Substitutes placeholders (`[Project Name]`, `<master>`, `<MasterAgentName>`) with the operator's values.
 3. Clones `qwibitai/nanoclaw` v2 from upstream into `<target>/nanoclaw-v2/` via `install-nanoclaw.sh`.
-4. Applies the four harness patches via `install-harness.sh`.
+4. Applies the five harness patches via `install-harness.sh`.
 5. Copies `nova/` into `<target>/nova/` (or symlinks if `--nova=symlink` — see caveat below).
 6. Registers the project's nanoclaw groups directory in the project's Nova `roots.ts` and `trace-sources.ts`.
 7. Initializes git in the new project (unless `--no-git`).
