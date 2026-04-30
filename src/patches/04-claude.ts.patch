@@ -1,8 +1,8 @@
 diff --git a/container/agent-runner/src/providers/claude.ts b/container/agent-runner/src/providers/claude.ts
-index c9478b8..3530544 100644
+index c9478b8..9316c9b 100644
 --- a/container/agent-runner/src/providers/claude.ts
 +++ b/container/agent-runner/src/providers/claude.ts
-@@ -11,6 +11,167 @@ function log(msg: string): void {
+@@ -11,6 +11,182 @@ function log(msg: string): void {
    console.error(`[claude-provider] ${msg}`);
  }
  
@@ -97,7 +97,14 @@ index c9478b8..3530544 100644
 +
 +const TRACE_ID_FILE = '/workspace/.current-trace-id';
 +const TRACE_AGENT_FILE = '/workspace/.current-agent';
-+const MIND_FILE_RE = /^\/workspace\/agent\/([A-Za-z][\w-]*)\.md$/;
++// Two-layout support during the migration from "flat group root" (Manu-era,
++// e.g. /workspace/agent/Soul.md) to the explicit Mind/ subfolder convention
++// (e.g. /workspace/agent/Mind/Soul.md, /workspace/agent/Mind/me/raju.md).
++// Order matters: try the nested form first so a path under Mind/ doesn't
++// accidentally fall through to the flat form (which couldn't match it anyway
++// because [\w-]* doesn't include '/', but explicit-first is clearer).
++const MIND_FILE_RE_NESTED = /^\/workspace\/agent\/Mind\/(.+)\.md$/;
++const MIND_FILE_RE_FLAT = /^\/workspace\/agent\/([A-Za-z][\w-]*)\.md$/;
 +
 +function readSentinel(p: string): string | undefined {
 +  try {
@@ -129,9 +136,17 @@ index c9478b8..3530544 100644
 +  const traceId = readSentinel(TRACE_ID_FILE);
 +  const agent = readSentinel(TRACE_AGENT_FILE);
 +  if (!traceId || !agent) return; // no active invocation context; silently drop
-+  const m = MIND_FILE_RE.exec(mindPath);
-+  if (!m) return;
-+  const slug = m[1].toLowerCase();
++  let slug: string | null = null;
++  const nested = MIND_FILE_RE_NESTED.exec(mindPath);
++  if (nested) {
++    // Subpaths get flattened with '_' so node_ids stay clean for Nova
++    // (sona:me_raju, sona:conventions_research, sona:soul).
++    slug = nested[1].toLowerCase().replace(/\//g, '_');
++  } else {
++    const flat = MIND_FILE_RE_FLAT.exec(mindPath);
++    if (flat) slug = flat[1].toLowerCase();
++  }
++  if (!slug) return;
 +  const eventName = toolName === 'Read' ? 'read' : 'write';
 +  appendTraceEvent({
 +    trace_id: traceId,
@@ -170,7 +185,7 @@ index c9478b8..3530544 100644
  // Deferred SDK builtins that either sidestep nanoclaw's own scheduling or
  // don't fit our async message-passing model (they're designed for Claude
  // Code's interactive UI and would hang here).
-@@ -156,6 +317,31 @@ const preToolUseHook: HookCallback = async (input) => {
+@@ -156,6 +332,31 @@ const preToolUseHook: HookCallback = async (input) => {
        stopReason: `Tool '${toolName}' is not available in this environment — use the nanoclaw equivalent.`,
      } as unknown as ReturnType<HookCallback>;
    }
@@ -202,7 +217,7 @@ index c9478b8..3530544 100644
    // Bash exposes its timeout via the tool_input.timeout field (ms). Any other
    // tool: no declared timeout.
    const declaredTimeoutMs =
-@@ -226,12 +412,8 @@ function createPreCompactHook(assistantName?: string): HookCallback {
+@@ -226,12 +427,8 @@ function createPreCompactHook(assistantName?: string): HookCallback {
  /**
   * Claude Code auto-compacts context at this window (tokens). Kept here so
   * the generic bootstrap doesn't need to know about Claude-specific env vars.
