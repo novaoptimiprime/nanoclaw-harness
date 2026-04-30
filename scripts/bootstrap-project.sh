@@ -11,7 +11,7 @@
 #     --target=/path/to/new-project \
 #     --project-name="My New Fleet" \
 #     [--master-name="Jarvis"] \
-#     [--nanoclaw-ref=v2.0.17] \
+#     [--nanoclaw-ref=34f3612] \  (commit hash; "v2.0.17" is NOT a real tag)
 #     [--nova=copy|symlink]      (default: copy. symlink shares the baseline
 #                                   nova/ across projects — use only if you
 #                                   want one Nova showing all your projects;
