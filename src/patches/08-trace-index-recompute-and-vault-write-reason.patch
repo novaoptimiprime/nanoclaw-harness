@@ -1,0 +1,133 @@
+diff --git a/src/log.ts b/src/log.ts
+index 051cf24..2586bc0 100644
+--- a/src/log.ts
++++ b/src/log.ts
+@@ -91,6 +91,74 @@ function dateDir(): string {
+   const d = new Date();
+   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+ }
++
++/**
++ * Count distinct `node_id`s in a trace JSONL, excluding entry/exit anchors.
++ *
++ * This matches Nova's `displayCount` semantic ([ViewerClient.tsx] computes
++ * the same count from loaded events). Used by the on-exit rewrite below to
++ * replace the pessimistic `node_count: 1` written at entry time.
++ */
++function countDistinctNonAnchorNodes(jsonlPath: string): number {
++  let raw: string;
++  try {
++    raw = fs.readFileSync(jsonlPath, 'utf8');
++  } catch {
++    return 0;
++  }
++  const nodes = new Set<string>();
++  for (const line of raw.split(/\r?\n/)) {
++    if (!line.trim()) continue;
++    try {
++      const e = JSON.parse(line) as { event?: unknown; node_id?: unknown };
++      if (e.event === 'entry' || e.event === 'exit') continue;
++      if (typeof e.node_id === 'string') nodes.add(e.node_id);
++    } catch {
++      /* skip malformed */
++    }
++  }
++  return nodes.size;
++}
++
++/**
++ * Rewrite the matching `index.jsonl` line for `traceId` with a new
++ * `node_count`. Atomic via tmp+rename so a crash mid-rewrite leaves the
++ * original file intact. Silent no-op if the index is missing or has no
++ * matching line — this fix is best-effort and must never break tracing.
++ */
++function rewriteIndexNodeCount(tracesRoot: string, traceId: string, newCount: number): void {
++  const indexPath = path.join(tracesRoot, 'index.jsonl');
++  let raw: string;
++  try {
++    raw = fs.readFileSync(indexPath, 'utf8');
++  } catch {
++    return;
++  }
++  const lines = raw.split(/\r?\n/);
++  let modified = false;
++  for (let i = 0; i < lines.length; i++) {
++    const line = lines[i];
++    if (!line || !line.trim()) continue;
++    try {
++      const entry = JSON.parse(line) as Record<string, unknown> & { trace_id?: unknown };
++      if (entry.trace_id !== traceId) continue;
++      entry.node_count = newCount;
++      lines[i] = JSON.stringify(entry);
++      modified = true;
++      // Don't break: tolerate (rare) duplicate index lines for the same trace.
++    } catch {
++      /* skip malformed */
++    }
++  }
++  if (!modified) return;
++  const tmp = indexPath + '.tmp';
++  try {
++    fs.writeFileSync(tmp, lines.join('\n'));
++    fs.renameSync(tmp, indexPath);
++  } catch {
++    /* swallow — tracing must never break the host */
++  }
++}
+ function writeTraceLine(trace: TraceContext, level: Level, msg: string, data: Record<string, unknown>): void {
+   if (!trace.trace_id || !trace.agent_folder) return;
+   const tracesRoot = path.join(HARNESS_GROUPS_DIR(), trace.agent_folder, 'Traces');
+@@ -128,11 +196,23 @@ function writeTraceLine(trace: TraceContext, level: Level, msg: string, data: Re
+         timestamp: ts,
+         summary,
+         agents: [trace.agent_folder],
++        // Pessimistic 1 at entry time; rewritten at exit time below with the
++        // actual distinct non-anchor node count from the JSONL. Nova falls
++        // back to this value when a trace isn't loaded yet (fast list path),
++        // so leaving it at 1 forever made the badge unreliable.
+         node_count: 1,
+         path: `${dateDir()}/${trace.trace_id}.jsonl`,
+       });
+       fs.appendFileSync(path.join(tracesRoot, 'index.jsonl'), indexLine + '\n');
+     }
++    if (trace.event === 'exit') {
++      // Recompute and overwrite the index entry's node_count now that the
++      // trace's full event stream is on disk. The exit event we just wrote is
++      // excluded from the count, so its inclusion in the JSONL is fine.
++      const jsonlPath = path.join(dir, `${trace.trace_id}.jsonl`);
++      const count = countDistinctNonAnchorNodes(jsonlPath);
++      rewriteIndexNodeCount(tracesRoot, trace.trace_id, count);
++    }
+   } catch {
+     // Tracing must never break the host. Drop silently — plaintext log already emitted.
+   }
+diff --git a/src/router.ts b/src/router.ts
+index ffab37b..86f325f 100644
+--- a/src/router.ts
++++ b/src/router.ts
+@@ -501,6 +501,25 @@ async function deliverToAgent(
+     },
+   });
+ 
++  // Emit one `vault_write` per Vault file the host downloaded for this
++  // inbound. Logged AFTER entry so chronological-sort in Nova's loader
++  // pairs the event as an edge from the entry node to the vault node
++  // (and the `reason` becomes visible in the edge-detail panel).
++  for (const dl of vaultDownload.downloads) {
++    log.info('Vault file written from Discord attachment', {
++      name: dl.filename,
++      size: dl.size,
++      sourceHost: dl.sourceHost,
++      reason: 'Discord attachment auto-stored — MasterMind/Vault.md rule 5 (Vault touch auto-traces)',
++      trace: {
++        trace_id: event.message.id,
++        agent_folder: agentGroup.folder,
++        event: 'vault_write',
++        node_id: `${agentGroup.folder}:vault:${vaultNodeIdSlug(dl.filename)}`,
++      },
++    });
++  }
++
+   if (wake) {
+     // Typing indicator + wake are only for the engaged branch; accumulated
+     // messages sit silently until a real trigger fires.

@@ -1,0 +1,393 @@
+diff --git a/src/channels/chat-sdk-bridge.ts b/src/channels/chat-sdk-bridge.ts
+index 18ab2cb..9d0548a 100644
+--- a/src/channels/chat-sdk-bridge.ts
++++ b/src/channels/chat-sdk-bridge.ts
+@@ -146,6 +146,15 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
+           width: (att as unknown as Record<string, unknown>).width,
+           height: (att as unknown as Record<string, unknown>).height,
+         };
++        // Preserve `url` for adapters (e.g. Discord) that hand off a CDN
++        // URL instead of a `fetchData()` callback. The host's vault-side
++        // downloader (`vault-attachment-download.ts`) fetches from this URL
++        // and writes bytes into the per-agent Vault on the inbound path.
++        // Without this, URL-only adapters silently lose the only handle
++        // back to the file bytes.
++        if (typeof (att as unknown as Record<string, unknown>).url === 'string') {
++          entry.url = (att as unknown as Record<string, unknown>).url;
++        }
+         if (att.fetchData) {
+           try {
+             const buffer = await att.fetchData();
+diff --git a/src/router.ts b/src/router.ts
+index 6044562..ffab37b 100644
+--- a/src/router.ts
++++ b/src/router.ts
+@@ -30,6 +30,7 @@ import { findSessionForAgent } from './db/sessions.js';
+ import { startTypingRefresh } from './modules/typing/index.js';
+ import { log, recordInboundForSession, entryNodeForAgentFolder, traceScopeForAgentFolder, writeTraceSentinels } from './log.js';
+ import { resolveSession, writeSessionMessage, writeOutboundDirect } from './session-manager.js';
++import { downloadVaultAttachments, vaultNodeIdSlug } from './vault-attachment-download.js';
+ import { wakeContainer } from './container-runner.js';
+ import { getSession } from './db/sessions.js';
+ import type { AgentGroup, MessagingGroup, MessagingGroupAgent } from './types.js';
+@@ -441,6 +442,21 @@ async function deliverToAgent(
+     }
+   }
+ 
++  // URL-only attachments (e.g. Discord, which forwards a CDN URL rather
++  // than inline base64) are downloaded into the per-agent Vault folder
++  // here, before the message lands in the inbound DB. The downloader
++  // mutates `attachments[]` in place: drops `url`, sets `localPath` so
++  // the in-container formatter can render `/workspace/agent/Vault/<name>`.
++  // Inline-base64 attachments are still handled by `extractAttachmentFiles`
++  // inside `writeSessionMessage`; both paths can coexist on a single message.
++  // Per-write trace events are emitted AFTER the entry event below so
++  // they show as edges out of the entry node in Nova (rule 5: vault touch
++  // auto-traces).
++  const vaultDownload = await downloadVaultAttachments(event.message.content, {
++    trace_id: event.message.id,
++    agent_folder: agentGroup.folder,
++  });
++
+   writeSessionMessage(session.agent_group_id, session.id, {
+     id: messageIdForAgent(event.message.id, agent.agent_group_id),
+     kind: event.message.kind,
+@@ -448,7 +464,7 @@ async function deliverToAgent(
+     platformId: deliveryAddr.platformId,
+     channelType: deliveryAddr.channelType,
+     threadId: deliveryAddr.threadId,
+-    content: event.message.content,
++    content: vaultDownload.content,
+     trigger: wake ? 1 : 0,
+   });
+ 
+diff --git a/src/vault-attachment-download.ts b/src/vault-attachment-download.ts
+new file mode 100644
+index 0000000..d406aef
+--- /dev/null
++++ b/src/vault-attachment-download.ts
+@@ -0,0 +1,324 @@
++/**
++ * Vault attachment download — host-side fetch of URL-only attachments
++ * (Discord) into the per-agent Vault folder.
++ *
++ * Why this exists. The v2 Discord chat-adapter forwards attachments as
++ * metadata + a CDN URL (`{type, url, name, mimeType, size}`) — it does not
++ * download bytes. The legacy inline-base64 path in `extractAttachmentFiles`
++ * (session-manager.ts) only fires when an `att.data` field is present and
++ * does nothing for URL-only attachments. Without an explicit download step,
++ * Discord image attachments never reach the host filesystem and the agent
++ * sees only a `[image: name.jpg]` marker with no path to read from.
++ *
++ * Where bytes land. The file is written to the daemon's own Vault folder
++ * (`<install-root>/../Vault/<sanitized-name>`), which `container-runner.ts`
++ * already bind-mounts read-write at `/workspace/agent/Vault/` per spawn.
++ * `att.localPath` is set to `agent/Vault/<name>` so the formatter renders
++ * the in-container path `/workspace/agent/Vault/<name>` — the same shape
++ * the inline-base64 path produces, just rooted under the Vault mount
++ * instead of the per-message inbox.
++ *
++ * Privacy. Per `MasterMind/Vault.md`, every Discord attachment to an
++ * agent's channel is treated as Vault content (rule 5: any vault touch
++ * forces tracing). This module emits a `vault_write` event on every
++ * successful write so the trace shows the privacy-relevant moment the
++ * file entered the agent's filesystem, alongside the agent's own
++ * `vault_access` events emitted from inside the container when the agent
++ * later reads the file.
++ *
++ * Security.
++ *   1. Host allowlist — only `cdn.discordapp.com` / `media.discordapp.net`
++ *      over HTTPS. Any other URL is logged and skipped.
++ *   2. Filename safety — `isSafeAttachmentName` + a realpath-containment
++ *      check against the Vault root (refuses traversal payloads in the
++ *      attachment name).
++ *   3. Symlink + overwrite refusal — `wx` flag on `writeFileSync`. On
++ *      collision, append a timestamp suffix to the basename.
++ *   4. Size cap — 25 MB (Discord's normal upload limit; the boost ceiling
++ *      is rarely useful here and the attached receipts in scope are
++ *      O(100 KB)). Enforced on Content-Length and again after read.
++ *   5. Timeout — 30s with AbortController.
++ *   6. Redirects — `redirect: 'manual'`. Discord CDN URLs serve the file
++ *      directly; a redirect would point off-allowlist.
++ *
++ * Threat model. Inbound `attachments[]` originates from a chat-adapter
++ * processing untrusted Discord messages. A peer or compromised adapter
++ * could craft `name`, `url`, or `size`. The defenses above bound the
++ * blast radius to: a same-Vault-folder write of allowlisted-host bytes
++ * under a sanitized basename, with a hard size cap. The file is then
++ * subject to all the standard Vault rules (per-agent isolation,
++ * no-cross-agent transfer) once the agent reads it.
++ */
++import fs from 'fs';
++import path from 'path';
++
++import { isSafeAttachmentName } from './attachment-safety.js';
++import { log } from './log.js';
++
++/**
++ * Derive a filename when the attachment object lacks `name`. Discord always
++ * sets `name`, so this fallback is rarely exercised — but kept for robustness
++ * against future URL-only adapters. Inlined here (rather than imported from
++ * `attachment-naming.ts`) so this module is self-contained across all
++ * harness baselines in the fleet — `attachment-naming.ts` was introduced in
++ * harness 2.0.18 and isn't present on older installs (e.g. Sona on 2.0.17).
++ */
++function deriveAttachmentNameLocal(att: Record<string, unknown>): string {
++  const explicit = att.name;
++  if (typeof explicit === 'string' && explicit) return explicit;
++  return `attachment-${Date.now()}`;
++}
++
++const ALLOWED_HOSTS: ReadonlySet<string> = new Set([
++  'cdn.discordapp.com',
++  'media.discordapp.net',
++]);
++const MAX_BYTES = 25 * 1024 * 1024;
++const FETCH_TIMEOUT_MS = 30_000;
++
++interface VaultTraceContext {
++  trace_id: string;
++  agent_folder: string;
++}
++
++/** One successful Vault write — caller emits the trace event for it. */
++export interface VaultDownloadRecord {
++  filename: string;
++  size: number;
++  sourceHost: string;
++}
++
++/** Return value of {@link downloadVaultAttachments}. */
++export interface VaultDownloadResult {
++  /** The (possibly mutated) message-content JSON string. */
++  content: string;
++  /** One entry per file actually written to the Vault. */
++  downloads: VaultDownloadRecord[];
++}
++
++/** Daemon's own Vault folder. Mirrors `container-runner.ts`'s derivation. */
++function vaultRoot(): string {
++  return path.resolve(process.cwd(), '..', 'Vault');
++}
++
++function isPathInside(parent: string, child: string): boolean {
++  const rel = path.relative(parent, child);
++  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
++}
++
++function safeNodeIdSlug(name: string): string {
++  const cleaned = name.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
++  return (cleaned || 'attachment').slice(0, 60);
++}
++
++/**
++ * Walk `attachments[]` in a chat:Message JSON, download every URL-only
++ * Discord attachment to the daemon's Vault folder, and rewrite each
++ * downloaded entry with `localPath = agent/Vault/<name>` so the
++ * downstream formatter surfaces the in-container path. Inline-base64
++ * attachments (where `att.data` is set) are left alone for the existing
++ * `extractAttachmentFiles` path in `session-manager.ts` to handle.
++ *
++ * Returns the (possibly mutated) content string. On any failure for a
++ * single attachment, that attachment is left untouched and the rest of
++ * the batch continues — partial success beats blocking the whole inbound
++ * message on a single broken URL.
++ */
++export async function downloadVaultAttachments(
++  contentStr: string,
++  trace: VaultTraceContext,
++): Promise<VaultDownloadResult> {
++  const downloads: VaultDownloadRecord[] = [];
++  let parsed: Record<string, unknown>;
++  try {
++    parsed = JSON.parse(contentStr);
++  } catch {
++    return { content: contentStr, downloads };
++  }
++  const attachments = parsed.attachments as Array<Record<string, unknown>> | undefined;
++  if (!Array.isArray(attachments) || attachments.length === 0) return { content: contentStr, downloads };
++
++  const root = vaultRoot();
++  if (!fs.existsSync(root)) {
++    log.warn('Vault root missing — Discord attachments dropped (host-side download skipped)', {
++      vaultRoot: root,
++      messageId: trace.trace_id,
++    });
++    return { content: contentStr, downloads };
++  }
++  let realRoot: string;
++  try {
++    realRoot = fs.realpathSync(root);
++  } catch (err) {
++    log.warn('Failed to resolve Vault root', { vaultRoot: root, err });
++    return { content: contentStr, downloads };
++  }
++
++  let changed = false;
++  for (const att of attachments) {
++    if (typeof att.data === 'string') continue;
++    if (typeof att.url !== 'string') continue;
++
++    let url: URL;
++    try {
++      url = new URL(att.url);
++    } catch {
++      log.warn('Skipping attachment with unparseable URL', { url: att.url, messageId: trace.trace_id });
++      continue;
++    }
++    if (url.protocol !== 'https:' || !ALLOWED_HOSTS.has(url.host)) {
++      log.warn('Refusing non-allowlisted attachment URL', {
++        host: url.host,
++        protocol: url.protocol,
++        messageId: trace.trace_id,
++      });
++      continue;
++    }
++
++    const rawName = deriveAttachmentNameLocal(att);
++    const safeBase = isSafeAttachmentName(rawName) ? rawName : `attachment-${Date.now()}`;
++    if (safeBase !== rawName) {
++      log.warn('Refused unsafe attachment filename, would escape Vault', {
++        rawName,
++        replacement: safeBase,
++        messageId: trace.trace_id,
++      });
++    }
++
++    let filename = safeBase;
++    let dest = path.join(root, filename);
++    const ext = path.extname(safeBase);
++    const stem = ext ? safeBase.slice(0, -ext.length) : safeBase;
++
++    let bytes: Uint8Array;
++    try {
++      const declaredSize = typeof att.size === 'number' ? att.size : undefined;
++      if (declaredSize !== undefined && declaredSize > MAX_BYTES) {
++        log.warn('Vault attachment declared size exceeds cap; skipping fetch', {
++          name: filename,
++          declaredSize,
++          cap: MAX_BYTES,
++          messageId: trace.trace_id,
++        });
++        continue;
++      }
++
++      const ac = new AbortController();
++      const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
++      let res: Response;
++      try {
++        res = await fetch(att.url, { redirect: 'manual', signal: ac.signal });
++      } finally {
++        clearTimeout(timer);
++      }
++      if (!res.ok) {
++        log.warn('Vault attachment fetch returned non-OK', {
++          status: res.status,
++          name: filename,
++          messageId: trace.trace_id,
++        });
++        continue;
++      }
++      const contentLengthHdr = res.headers.get('content-length');
++      if (contentLengthHdr) {
++        const cl = Number.parseInt(contentLengthHdr, 10);
++        if (Number.isFinite(cl) && cl > MAX_BYTES) {
++          log.warn('Vault attachment Content-Length exceeds cap', {
++            name: filename,
++            contentLength: cl,
++            cap: MAX_BYTES,
++            messageId: trace.trace_id,
++          });
++          continue;
++        }
++      }
++      const ab = await res.arrayBuffer();
++      if (ab.byteLength > MAX_BYTES) {
++        log.warn('Vault attachment body exceeds cap (post-read)', {
++          name: filename,
++          size: ab.byteLength,
++          cap: MAX_BYTES,
++          messageId: trace.trace_id,
++        });
++        continue;
++      }
++      bytes = new Uint8Array(ab);
++    } catch (err) {
++      log.warn('Vault attachment fetch failed', {
++        name: filename,
++        err,
++        messageId: trace.trace_id,
++      });
++      continue;
++    }
++
++    // Realpath containment: refuse anything whose joined path resolves
++    // outside the Vault root (defense in depth — `isSafeAttachmentName`
++    // already rejects path separators, but a Vault root that itself is
++    // a symlink could in principle redirect us elsewhere).
++    let realDest: string;
++    try {
++      realDest = fs.realpathSync(path.dirname(dest));
++    } catch {
++      realDest = path.dirname(dest);
++    }
++    if (!isPathInside(realRoot, realDest) && realDest !== realRoot) {
++      log.warn('Vault destination escaped Vault root', { dest, realDest, realRoot });
++      continue;
++    }
++
++    // Write with `wx`: refuse to follow a pre-existing symlink and
++    // refuse to overwrite an existing file. On EEXIST, retry once with
++    // a timestamped basename so a re-sent attachment doesn't collide
++    // with a previously-stored receipt of the same name.
++    let written = false;
++    try {
++      fs.writeFileSync(dest, bytes, { flag: 'wx' });
++      written = true;
++    } catch (err: unknown) {
++      const e = err as NodeJS.ErrnoException;
++      if (e.code !== 'EEXIST') {
++        log.warn('Vault attachment write failed', { name: filename, err, messageId: trace.trace_id });
++        continue;
++      }
++      const fallback = `${stem}-${Date.now()}${ext}`;
++      const fallbackDest = path.join(root, fallback);
++      try {
++        fs.writeFileSync(fallbackDest, bytes, { flag: 'wx' });
++        filename = fallback;
++        dest = fallbackDest;
++        written = true;
++      } catch (err2) {
++        log.warn('Vault attachment write failed even with timestamped fallback', {
++          original: safeBase,
++          fallback,
++          err: err2,
++          messageId: trace.trace_id,
++        });
++      }
++    }
++    if (!written) continue;
++
++    att.name = filename;
++    att.localPath = `agent/Vault/${filename}`;
++    delete att.url;
++    delete att.data;
++    changed = true;
++
++    // Don't emit the trace event from inside this function. The caller
++    // (router.ts) emits it AFTER its own `entry` log so the chronological
++    // order in the JSONL is `entry → vault_write → ...`. That ordering
++    // matters because Nova's trace loader walks events in timestamp order
++    // and only draws an edge when `prevNode` is set; emitting vault_write
++    // before entry would leave it as a loose dangling node with no edge,
++    // making `metadata.reason` invisible in the UI.
++    downloads.push({ filename, size: bytes.length, sourceHost: url.host });
++  }
++
++  return { content: changed ? JSON.stringify(parsed) : contentStr, downloads };
++}
++
++/** Stable node-id slug for Vault attachments. Re-exported for callers that emit the trace event. */
++export function vaultNodeIdSlug(name: string): string {
++  return safeNodeIdSlug(name);
++}
