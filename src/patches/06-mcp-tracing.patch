@@ -1,0 +1,95 @@
+diff --git a/container/agent-runner/src/providers/claude.ts b/container/agent-runner/src/providers/claude.ts
+index 9316c9b..967ba83 100644
+--- a/container/agent-runner/src/providers/claude.ts
++++ b/container/agent-runner/src/providers/claude.ts
+@@ -187,6 +187,49 @@ function emitVaultEvent(toolName: string, vaultPath: string, decision: 'allow' |
+   });
+ }
+ 
++// MCP-tool invocations (mcp__<server>__<tool>) emit a paired call/result so Nova
++// can render hops between the agent's Soul and the MCP server it talked to.
++// v1 emitted these from container-runner; v2's agent-runner extraction dropped
++// the branch (was claimed in line-91 comment, never wired). Restored 2026-05-02
++// — gap #16. Server names with underscores (e.g. mcp__claude_in_chrome__find)
++// require the non-greedy first capture.
++const MCP_TOOL_RE = /^mcp__(.+?)__(.+)$/;
++const MCP_PAYLOAD_LIMIT = 4096;
++
++function emitMcpEvent(
++  kind: 'call' | 'result',
++  toolName: string,
++  payload: unknown,
++  isError?: boolean,
++): void {
++  const traceId = readSentinel(TRACE_ID_FILE);
++  const agent = readSentinel(TRACE_AGENT_FILE);
++  if (!traceId || !agent) return;
++  const m = MCP_TOOL_RE.exec(toolName);
++  if (!m) return;
++  const server = m[1];
++  const tool = m[2];
++  let snippet: unknown = payload;
++  try {
++    const s = JSON.stringify(payload);
++    if (s && s.length > MCP_PAYLOAD_LIMIT) snippet = s.slice(0, MCP_PAYLOAD_LIMIT) + '…[truncated]';
++  } catch {
++    /* non-serializable; pass through */
++  }
++  appendTraceEvent({
++    trace_id: traceId,
++    timestamp: new Date().toISOString(),
++    agent,
++    node_id: `${agent}:mcp:${server}:${tool}`,
++    event: kind === 'call' ? 'mcp_call' : 'mcp_result',
++    related_node_id: null,
++    server,
++    tool,
++    kind: 'write',
++    ...(kind === 'call' ? { args: snippet } : { response: snippet, isError: !!isError }),
++  });
++}
++
+ // Deferred SDK builtins that either sidestep nanoclaw's own scheduling or
+ // don't fit our async message-passing model (they're designed for Claude
+ // Code's interactive UI and would hang here).
+@@ -357,6 +400,11 @@ const preToolUseHook: HookCallback = async (input) => {
+     const target = (i.tool_input?.file_path ?? i.tool_input?.path) as string | undefined;
+     if (typeof target === 'string') emitMindEvent(toolName, target);
+   }
++  // MCP-tool invocation → emit `mcp_call` so Nova can render the hop. Paired
++  // with `mcp_result` from postToolUseHook below.
++  if (toolName.startsWith('mcp__')) {
++    emitMcpEvent('call', toolName, i.tool_input);
++  }
+   // Bash exposes its timeout via the tool_input.timeout field (ms). Any other
+   // tool: no declared timeout.
+   const declaredTimeoutMs =
+@@ -369,8 +417,26 @@ const preToolUseHook: HookCallback = async (input) => {
+   return { continue: true };
+ };
+ 
+-/** Clear in-flight tool on PostToolUse / PostToolUseFailure. */
+-const postToolUseHook: HookCallback = async () => {
++/**
++ * Clear in-flight tool on PostToolUse / PostToolUseFailure. Also emit
++ * `mcp_result` for any mcp__* tool — wired to both events, branches on
++ * `hook_event_name` since the SDK exposes failures via a separate input shape
++ * (`error: string`) rather than an `is_error` flag on the success input.
++ */
++const postToolUseHook: HookCallback = async (input) => {
++  const i = input as {
++    hook_event_name?: 'PostToolUse' | 'PostToolUseFailure';
++    tool_name?: string;
++    tool_response?: unknown;
++    error?: string;
++  };
++  if (i.tool_name?.startsWith('mcp__')) {
++    if (i.hook_event_name === 'PostToolUseFailure') {
++      emitMcpEvent('result', i.tool_name, i.error ?? 'tool failed', true);
++    } else {
++      emitMcpEvent('result', i.tool_name, i.tool_response);
++    }
++  }
+   try {
+     clearContainerToolInFlight();
+   } catch (err) {
