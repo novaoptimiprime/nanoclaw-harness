@@ -1,0 +1,161 @@
+diff --git a/src/modules/mount-security/index.ts b/src/modules/mount-security/index.ts
+index 3e113df..eaa288a 100644
+--- a/src/modules/mount-security/index.ts
++++ b/src/modules/mount-security/index.ts
+@@ -26,6 +26,14 @@ export interface MountAllowlist {
+ export interface AllowedRoot {
+   path: string;
+   allowReadWrite: boolean;
++  /**
++   * Per-agent ownership. When set, this root may only be mounted by the
++   * agent whose lowercased group name matches this slug. Used to architecturally
++   * enforce per-agent privacy boundaries (Vault, Mind, Traces, Tools/dist).
++   * Omit on shared infrastructure (e.g. MasterMind). See MasterMind/Vault.md
++   * rule 1 (per-agent isolation).
++   */
++  ownedBy?: string;
+   description?: string;
+ }
+ 
+@@ -226,9 +234,20 @@ export interface MountValidationResult {
+ /**
+  * Validate a single additional mount against the allowlist.
+  * Returns validation result with reason.
++ *
++ * If `agentName` is provided and the matched allowlist entry has `ownedBy`
++ * set, the agent's lowercased name must match `ownedBy` or the mount is
++ * rejected (per-agent privacy enforcement — see MasterMind/Vault.md rule 1).
++ *
++ * Optional `allowlistOverride` lets tests inject a synthetic allowlist
++ * without touching the on-disk config.
+  */
+-export function validateMount(mount: AdditionalMount): MountValidationResult {
+-  const allowlist = loadMountAllowlist();
++export function validateMount(
++  mount: AdditionalMount,
++  agentName?: string,
++  allowlistOverride?: MountAllowlist,
++): MountValidationResult {
++  const allowlist = allowlistOverride ?? loadMountAllowlist();
+ 
+   // If no allowlist, block all additional mounts
+   if (allowlist === null) {
+@@ -280,6 +299,19 @@ export function validateMount(mount: AdditionalMount): MountValidationResult {
+     };
+   }
+ 
++  // Per-agent ownership enforcement. When the matched root carries `ownedBy`,
++  // only the owning agent may mount it. Compares lowercased agent group name
++  // against the slug. Omitted ownedBy = shared infrastructure (e.g. MasterMind).
++  if (allowedRoot.ownedBy) {
++    const requesterSlug = (agentName ?? '').toLowerCase();
++    if (requesterSlug !== allowedRoot.ownedBy) {
++      return {
++        allowed: false,
++        reason: `Cross-agent ownership violation: path "${realPath}" is owned by "${allowedRoot.ownedBy}" but mount requested by agent "${agentName ?? '<unknown>'}". Per MasterMind/Vault.md rule 1 (per-agent isolation), private resources cannot cross agent boundaries.`,
++      };
++    }
++  }
++
+   // Determine effective readonly status.
+   // RW is only granted if the mount explicitly requests it AND the allowed
+   // root permits it. Otherwise it's forced read-only.
+@@ -326,7 +358,7 @@ export function validateAdditionalMounts(
+   }> = [];
+ 
+   for (const mount of mounts) {
+-    const result = validateMount(mount);
++    const result = validateMount(mount, groupName);
+ 
+     if (result.allowed) {
+       validatedMounts.push({
+diff --git a/src/modules/mount-security/mount-security.test.ts b/src/modules/mount-security/mount-security.test.ts
+new file mode 100644
+index 0000000..bb54642
+--- /dev/null
++++ b/src/modules/mount-security/mount-security.test.ts
+@@ -0,0 +1,84 @@
++import { describe, it, expect } from 'vitest';
++import fs from 'fs';
++import os from 'os';
++import path from 'path';
++
++import { validateMount, type MountAllowlist } from './index.js';
++
++function makeAllowlist(roots: MountAllowlist['allowedRoots']): MountAllowlist {
++  return { allowedRoots: roots, blockedPatterns: [] };
++}
++
++describe('validateMount — per-agent ownership enforcement (Vault privacy)', () => {
++  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mount-security-test-'));
++  const manuVault = path.join(tmpRoot, 'TechAgent', 'Vault');
++  const vedaVault = path.join(tmpRoot, 'ResearchAssistant', 'Vault');
++  const sharedDir = path.join(tmpRoot, 'MasterMind');
++  fs.mkdirSync(manuVault, { recursive: true });
++  fs.mkdirSync(vedaVault, { recursive: true });
++  fs.mkdirSync(sharedDir, { recursive: true });
++
++  const allowlist = makeAllowlist([
++    { path: manuVault, allowReadWrite: true, ownedBy: 'manu', description: 'Manu Vault' },
++    { path: vedaVault, allowReadWrite: true, ownedBy: 'veda', description: 'Veda Vault' },
++    { path: sharedDir, allowReadWrite: true, description: 'Shared infra (no ownedBy)' },
++  ]);
++
++  it('rejects cross-agent vault mount: Veda trying to mount Manu Vault', () => {
++    const result = validateMount(
++      { hostPath: manuVault, containerPath: 'foreign-vault', readonly: false },
++      'Veda',
++      allowlist,
++    );
++    expect(result.allowed).toBe(false);
++    expect(result.reason).toMatch(/Cross-agent ownership violation/);
++    expect(result.reason).toMatch(/owned by "manu"/);
++    expect(result.reason).toMatch(/agent "Veda"/);
++    expect(result.reason).toMatch(/MasterMind\/Vault\.md/);
++  });
++
++  it('accepts a vault mount when the requesting agent matches ownedBy', () => {
++    const result = validateMount(
++      { hostPath: manuVault, containerPath: 'own-vault', readonly: false },
++      'Manu',
++      allowlist,
++    );
++    expect(result.allowed).toBe(true);
++    expect(result.realHostPath).toBe(fs.realpathSync(manuVault));
++  });
++
++  it('matches case-insensitively on the agent name (group name "MANU" → slug "manu")', () => {
++    const result = validateMount(
++      { hostPath: manuVault, containerPath: 'own-vault', readonly: false },
++      'MANU',
++      allowlist,
++    );
++    expect(result.allowed).toBe(true);
++  });
++
++  it('rejects when no agent name is provided and the root has ownedBy set', () => {
++    const result = validateMount(
++      { hostPath: manuVault, containerPath: 'foreign-vault', readonly: false },
++      undefined,
++      allowlist,
++    );
++    expect(result.allowed).toBe(false);
++    expect(result.reason).toMatch(/Cross-agent ownership violation/);
++  });
++
++  it('allows shared infrastructure (no ownedBy) for any agent', () => {
++    const veda = validateMount(
++      { hostPath: sharedDir, containerPath: 'shared', readonly: true },
++      'Veda',
++      allowlist,
++    );
++    expect(veda.allowed).toBe(true);
++
++    const manu = validateMount(
++      { hostPath: sharedDir, containerPath: 'shared', readonly: true },
++      'Manu',
++      allowlist,
++    );
++    expect(manu.allowed).toBe(true);
++  });
++});
